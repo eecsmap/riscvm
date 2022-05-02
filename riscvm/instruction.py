@@ -73,6 +73,7 @@ imm_j = lambda x: int32(
     | section(x, 12, 8) << 12
     | section(x, 20, 1) << 11
     | section(x, 21, 10) << 1, 21)
+atomic = lambda x: funct7(x) >> 2
 
 def test_sections():
     '''
@@ -105,6 +106,34 @@ def test_sections():
     >>> imm_j(0b0000000_00011_00000_000_00000_0000000)
     2050
     '''
+
+def get_matchers(instruction):
+    '''
+    Every instruction has its own decoding pattern.
+    '''
+    if instruction.opcode == 0b0101111:
+        return (opcode, funct3, atomic)
+    return (opcode, funct3, funct7)
+
+decode_lookup = {}
+decode_lookup_atomic_extension = {}
+
+def decode_instruction(instruction):
+    UNDEFINED = 'UD'
+    value = decode_lookup
+    levels = get_matchers(instruction)
+    
+    # for atomic extension
+    if instruction.opcode == 0b0101111:
+        value = decode_lookup_atomic_extension
+        levels = get_matchers(instruction)
+
+    for level in levels:
+        value = value.get(level(instruction.value), UNDEFINED)
+        if not isinstance(value, dict):
+            return value
+    raise InternalException('decode error')
+
 
 # TODO: this should be loaded from some csv table instead
 
@@ -266,19 +295,18 @@ mnemonics_a = {
 def get_mnemonic(instruction):
     UNDEFINED = 'UD'
     value = mnemonics
-    levels = (instruction.opcode, instruction.funct3, instruction.funct7, instruction.rs2)
+    levels = get_matchers(instruction)
     
     # for atomic extension
     if instruction.opcode == 0b0101111:
         value = mnemonics_a
-        levels = (instruction.opcode, instruction.funct3, instruction.funct7 >> 2)
+        levels = get_matchers(instruction)
 
     for level in levels:
-        value = value.get(level, UNDEFINED)
+        value = value.get(level(instruction.value), UNDEFINED)
         if not isinstance(value, dict):
             return value
     raise InternalException('incorrect mnemonics definition')
-
 
 
 class InternalException(Exception):
