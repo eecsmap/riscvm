@@ -1,7 +1,6 @@
 from riscvm.instruction import Instruction
 
 if __name__ == '__main__':
-    #for instruction in get_instructions(sys.stdin):
     import argparse
     import sys
     parser = argparse.ArgumentParser()
