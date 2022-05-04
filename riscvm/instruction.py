@@ -1,12 +1,11 @@
 from enum import Enum, auto
 from textwrap import indent
-from .mnemonics import get_mnemonic, get_matchers
+from .mnemonics import get_mnemonic
 
 VERBOSE = True
 USE_SYMBOL = True
 
-from .sections import *
-
+from .utils import *
 
 class OpCodeType(Enum):
     UNDEFINED = auto()

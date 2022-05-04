@@ -1,52 +1,65 @@
-from riscvm import Bus, RAM, CPU, Instruction, create_ram
+from riscvm import inst_gen, signed, Instruction
+import pytest
 
-def test_lb():
-    bus = Bus()
-    ram = create_ram(b'\xff')
-    bus.add_device(ram, (0, len(ram)))
-    cpu = CPU(bus=bus)
-    cpu.execute(Instruction(0x00000083)) # 'lb x1, 0(x0)'
-    assert cpu.registers[1].value == 0xffff_ffff_ffff_ffff
+testdata_run = (
+    (b'', []),
+    (b'\x01', []),
+    (b'\x01\x02', []),
+    (b'\x01\x02\x03', []),
+    (b'\x01\x02\x03\x04', [0x04030201]),
+    (b'\x01\x02\x03\x04\x05', [0x04030201]),
+    (b'\x01\x02\x03\x04\x05\x06', [0x04030201]),
+    (b'\x01\x02\x03\x04\x05\x06\x07', [0x04030201]),
+    (b'\x01\x02\x03\x04\x05\x06\x07\x08', [0x04030201, 0x08070605]),
+)
 
-def test_lh():
-    bus = Bus()
-    ram = create_ram(b'\x42\xff')
-    bus.add_device(ram, (0, len(ram)))
-    cpu = CPU(bus=bus)
-    cpu.execute(Instruction(0x00001083)) # 'lh x1, 0(x0)'
-    assert cpu.registers[1].value == 0xffff_ffff_ffff_ff42
+@pytest.mark.parametrize('input,expected', testdata_run)
+def test_run(input, expected):
+    data = b'\x01\x23\x45\x67\x89\xab\xcd\xef'
+    instructions = inst_gen(input)
+    assert(list(instructions) == expected)
 
-def test_lbu():
-    bus = Bus()
-    ram = create_ram(b'\xff')
-    bus.add_device(ram, (0, len(ram)))
-    cpu = CPU(bus=bus)
-    cpu.execute(Instruction(0x00004083)) # 'lbu x1, 0(x0)'
-    assert cpu.registers[1].value == 0xff
+testdata_instruction = (
+    (Instruction(0b0100000_10000_01000_100_00010_0000001).opcode, 1),
+    (Instruction(0b0100000_10000_01000_100_00010_0000001).rd, 2),
+    (Instruction(0b0100000_10000_01000_100_00010_0000001).funct3, 4),
+    (Instruction(0b0100000_10000_01000_100_00010_0000001).rs1, 8),
+    (Instruction(0b0100000_10000_01000_100_00010_0000001).rs2, 16),
+    (Instruction(0b0100000_10000_01000_100_00010_0000001).funct7, 32),
+    (Instruction(0b1000000_00000_00000_000_00000_0000000).imm_i, -2048),
+    (Instruction(0b1000000_00000_00000_000_00001_0000000).imm_s, -2047),
+    (Instruction(0b1000000_00000_00000_000_00010_0000000).imm_b, -4094),
+    (Instruction(0b1000000_00000_00000_000_00000_0000000).imm_u, -2147483648),
+    (Instruction(0b1_0000000001_0_00000000_00000_0000000).imm_j, -1048574),
+)
 
-def test_lhu():
-    bus = Bus()
-    ram = create_ram(b'\x42\xff')
-    bus.add_device(ram, (0, len(ram)))
-    cpu = CPU(bus=bus)
-    cpu.execute(Instruction(0x00005083)) # 'lhu x1, 0(x0)'
-    assert cpu.registers[1].value == 0xff42
+@pytest.mark.parametrize('value,expected', testdata_instruction)
+def test_instruction(value, expected):
+    assert(value == expected)
 
-def test_addi():
-    bus = Bus()
-    ram = create_ram(b'\x00')
-    bus.add_device(ram, (0, len(ram)))
-    cpu = CPU(bus=bus)
-    cpu.execute(Instruction(0x02a00093)) # addi x1, x0, 42
-    assert cpu.registers[1].value == 42
+def candidate():
+    print(Instruction(0x00000000))
+    print(Instruction(0x40000003))
+    print(Instruction(0x40000013))
+    print(Instruction(0x40000017))
+    print(Instruction(0x40000023))
+    print(Instruction(0x00000033))
+    print(Instruction(0x40000037))
+    print(Instruction(0x40000063))
+    print(Instruction(0x40000067))
+    print(Instruction(0x4000006f))
 
-def test_xori():
-    bus = Bus()
-    ram = create_ram(b'\x00')
-    bus.add_device(ram, (0, len(ram)))
-    cpu = CPU(bus=bus)
-    cpu.registers[2].value = 0xffff_ffff_ffff_ff00
-    cpu.execute(Instruction(0xfff14093)) # not x1, x2
-    assert cpu.registers[1].value == 0xff
+    print(Instruction(0x80000003))
+    print(Instruction(0x80000013))
+    print(Instruction(0x80000017))
+    print(Instruction(0x80000023))
+    print(Instruction(0x00000033))
+    print(Instruction(0x80000037))
+    print(Instruction(0x80000063))
+    print(Instruction(0x80000067))
+    print(Instruction(0x8000006f))
 
-test_lb()
+    # make sure
+    # 0x40155513 -> srai, x10, x10, 0x1
+    # 0x02004737 -> lui, x14, 0x2004
+    # 

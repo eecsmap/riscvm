@@ -278,7 +278,7 @@ MNEMONICS = {
 }
 
 
-from .sections import *
+from .utils import opcode, funct3, funct7, atomic, rs2
 
 def get_matchers(instruction):
     '''

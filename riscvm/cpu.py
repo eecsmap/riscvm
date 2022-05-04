@@ -14,7 +14,7 @@ class CPU:
     def __init__(self, bus):
         self.registers = [Register(0, f'x{i}') for i in range(32)]
         self.registers[0] = FixedRegister(0, 'x0')
-        self.pc = Register(0x8000_0000)
+        self.pc = Register() #0x8000_0000)
         self.bus = bus
     
     def fetch(self):
@@ -25,13 +25,14 @@ class CPU:
     def rd(self, value):
         self.registers[self.instruction.rd].value = value
 
-    def execute(self, instruction):
+    def execute(self, instruction=None):
         if instruction:
             self.instruction = instruction
-
+        
         if self.instruction.value == 0:
             error('stop at zero content instruction')
 
+        instruction = self.instruction
         match get_mnemonic(instruction):
             case Mnemonic.LB:
                 self.rd(i8(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 1)))
@@ -62,4 +63,4 @@ class CPU:
             case Mnemonic.SRAI:
                 self.rd(i64(self.registers[instruction.rs1].value) >> instruction.imm_i)
             case _:
-                raise Exception(f'not implemented instruction: {instruction}')
+                raise Exception(f'invalid instruction: {instruction}')
