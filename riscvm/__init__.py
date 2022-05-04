@@ -1,8 +1,8 @@
 '''
-refer to https://riscv.org/wp-content/uploads/2017/05/riscv-spec-v2.2.pdf
-
-Chapter 19 RV32/64G Instruction Set Listings
-
+# https://riscv.org/technical/specifications/
+# https://msyksphinz-self.github.io/riscv-isadoc/html/index.html
+# file:///Users/wenyang/Downloads/riscv-spec-20191213.pdf
+# RV32/64G Instruction Set Listings
 G = IMAFD
 '''
 # Make sure organize modules in topological order

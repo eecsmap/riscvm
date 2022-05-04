@@ -2,8 +2,10 @@ from riscvm import Register
 from riscvm import Instruction
 from riscvm import Bus
 from riscvm import error
+from riscvm.mnemonics import Mnemonic
 from riscvm.register import FixedRegister
 from riscvm.utils import i8, i16, i32, i64, u8, u16, u32, u64, todo
+from .instruction import get_mnemonic
 
 class CPU:
 
@@ -20,6 +22,9 @@ class CPU:
         self.pc.value += self.INSTRUCTION_SIZE
         return self.instruction
 
+    def rd(self, value):
+        self.registers[self.instruction.rd].value = value
+
     def execute(self, instruction):
         if instruction:
             self.instruction = instruction
@@ -27,45 +32,34 @@ class CPU:
         if self.instruction.value == 0:
             error('stop at zero content instruction')
 
-        print(self.instruction)
-        match self.instruction.opcode:
-            case 0b000_0011:
-                match self.instruction.funct3:
-                    case 0b000: # lb
-                        self.registers[self.instruction.rd].value = i8(self.bus.read(self.registers[self.instruction.rs1].value + self.instruction.imm_i, 1))
-                    case 0b001: # lh
-                        self.registers[self.instruction.rd].value = i16(self.bus.read(self.registers[self.instruction.rs1].value + self.instruction.imm_i, 2))
-                    case 0b010: # lw
-                        self.registers[self.instruction.rd].value = i32(self.bus.read(self.registers[self.instruction.rs1].value + self.instruction.imm_i, 4))
-                    case 0b011: # ld
-                        self.registers[self.instruction.rd].value = i64(self.bus.read(self.registers[self.instruction.rs1].value + self.instruction.imm_i, 8))
-                    case 0b100: # lbu
-                        self.registers[self.instruction.rd].value = u8(self.bus.read(self.registers[self.instruction.rs1].value + self.instruction.imm_i, 1))
-                    case 0b101: # lhu
-                        self.registers[self.instruction.rd].value = u16(self.bus.read(self.registers[self.instruction.rs1].value + self.instruction.imm_i, 2))
-                    case 0b110: # lwu
-                        self.registers[self.instruction.rd].value = u32(self.bus.read(self.registers[self.instruction.rs1].value + self.instruction.imm_i, 4))
-            case 0b001_0011:
-                match self.instruction.funct3:
-                    case 0b000: # addi
-                        self.registers[self.instruction.rd].value = self.registers[self.instruction.rs1].value + self.instruction.imm_i
-                    case 0b001:
-                        match self.instruction.funct7:
-                            case 0b0000000: # slli
-                                self.registers[self.instruction.rd].value = self.registers[self.instruction.rs1].value << self.instruction.imm_i
-                    case 0b010: # slti
-                        self.registers[self.instruction.rd].value = i64(self.registers[self.instruction.rs1].value) < self.instruction.imm_i
-                    case 0b011: # sltiu
-                        self.registers[self.instruction.rd].value = u64(self.registers[self.instruction.rs1].value) < u64(self.instruction.imm_i)
-                    case 0b100: # xori
-                        self.registers[self.instruction.rd].value = u64(self.registers[self.instruction.rs1].value) ^ u64(self.instruction.imm_i)
-                    case 0b101:
-                        match self.instruction.funct7:
-                            case 0b0000000: # srli
-                                self.registers[self.instruction.rd].value = u64(self.registers[self.instruction.rs1].value) >> self.instruction.imm_i
-                            case 0b0100000: # srai
-                                self.registers[self.instruction.rd].value = i64(self.registers[self.instruction.rs1].value) >> self.instruction.imm_i
-
-            case 0x33:
-                self.registers[self.instruction.rd].value = i64(self.registers[self.instruction.rs1].value) + self.registers[self.instruction.rs2].value
-        print(self.registers)
+        match get_mnemonic(instruction):
+            case Mnemonic.LB:
+                self.rd(i8(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 1)))
+            case Mnemonic.LH:
+                self.rd(i16(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 2)))
+            case Mnemonic.LW:
+                self.rd(i32(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 4)))
+            case Mnemonic.LD:
+                self.rd(i64(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 8)))
+            case Mnemonic.LBU:
+                self.rd(u8(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 1)))
+            case Mnemonic.LHU:
+                self.rd(u16(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 2)))
+            case Mnemonic.LWU:
+                self.rd(u32(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 4)))
+            case Mnemonic.XORI:
+                self.rd(u64(self.registers[instruction.rs1].value) ^ u64(instruction.imm_i))
+            case Mnemonic.ADDI:
+                self.rd(self.registers[instruction.rs1].value + instruction.imm_i)
+            case Mnemonic.SLLI:
+                self.rd(self.registers[instruction.rs1].value << instruction.shamt)
+            case Mnemonic.SLTI:
+                self.rd(i64(self.registers[instruction.rs1].value) < instruction.imm_i)
+            case Mnemonic.SLTIU:
+                self.rd(u64(self.registers[instruction.rs1].value) < u64(instruction.imm_i))
+            case Mnemonic.SRLI:
+                self.rd(u64(self.registers[instruction.rs1].value) >> instruction.imm_i)
+            case Mnemonic.SRAI:
+                self.rd(i64(self.registers[instruction.rs1].value) >> instruction.imm_i)
+            case _:
+                raise Exception(f'not implemented instruction: {instruction}')
