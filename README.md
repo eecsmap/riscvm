@@ -1,4 +1,4 @@
-# RISC-V Machine
+# RISC-V(irtual) Machine
 
 ## Usage
 

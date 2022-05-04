@@ -1,6 +1,5 @@
 from bisect import bisect_left, bisect_right
 
-
 class RangeMangerException(Exception):
     pass
 
@@ -54,4 +53,3 @@ class RangeManger:
 def test_rangemanger():
     range_manger = RangeManger()
     range_manger.add_range((-1, 1))
-

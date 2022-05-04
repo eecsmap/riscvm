@@ -2,14 +2,17 @@ import argparse
 import sys
 
 from riscvm import CPU
-from riscvm import Instruction
+from riscvm.bus import Bus
+from riscvm.ram import RAM
 
 class Emulator:
 
     def __init__(self, program):
-        self.cpu = CPU()
-        self.cpu.bus.ram.load(program)
-        
+        ram = RAM(len(program))
+        ram.load(program)
+        bus = Bus()
+        bus.add_device(ram, (0, len(ram)))
+        self.cpu = CPU(bus)
 
     def run(self):
         while self.cpu.fetch():

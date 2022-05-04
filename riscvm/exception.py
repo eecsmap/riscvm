@@ -1,5 +1,5 @@
-class RV64Exception(Exception):
+class Exception(Exception):
     '''riscvm base exception'''
 
 def error(message):
-    raise RV64Exception(message)
+    raise Exception(message)
