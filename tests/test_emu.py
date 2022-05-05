@@ -3,7 +3,8 @@ from riscvm.emulator import Emulator
 
 def test_empty():
     data = unhexlify('9307f5ff00000000')
-    Emulator(data).run()
+    emulator = Emulator(data)
+    emulator.run()
 
 def test_fib():
     '''
@@ -11,5 +12,9 @@ def test_fib():
     and riscv64-unknown-linux-gnu-objcopy -O binary
     then hexlified by python binascii.hexlify()
     '''
-    data = unhexlify('9307f5ff6354a00213071000930600001306f0ff130507009387f7ff3307d70093060500e398c7fe678000001305000067800000')
-    Emulator(data).run()
+    data = unhexlify('000000009307f5ff6354a00213071000930600001306f0ff130507009387f7ff3307d70093060500e398c7fe678000001305000067800000')
+    emulator = Emulator(data)
+    emulator.cpu.registers[10].value = 80
+    emulator.cpu.pc.value = 4
+    emulator.run()
+    assert emulator.cpu.registers[10].value == 23416728348467685
