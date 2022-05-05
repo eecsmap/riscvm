@@ -18,8 +18,8 @@ class CPU:
         self.bus = bus
     
     def fetch(self):
+        print(f'debug: fetching from 0x{self.pc.value:016X}')
         self.instruction = Instruction(self.bus.read(self.pc.value, self.INSTRUCTION_SIZE))
-        self.pc.value += self.INSTRUCTION_SIZE
         return self.instruction
 
     def rd(self, value):
@@ -33,6 +33,10 @@ class CPU:
             raise StopException('stop at zero content instruction')
 
         instruction = self.instruction
+        branching = False
+        pc_offset = 0
+        jumping = False
+        pc_new = 0
         match get_mnemonic(instruction):
             case Mnemonic.LB:
                 self.rd(i8(self.bus.read(self.registers[instruction.rs1].value + instruction.imm_i, 1)))
@@ -62,5 +66,25 @@ class CPU:
                 self.rd(u64(self.registers[instruction.rs1].value) >> instruction.imm_i)
             case Mnemonic.SRAI:
                 self.rd(i64(self.registers[instruction.rs1].value) >> instruction.imm_i)
+            case Mnemonic.BGE:
+                if i64(self.registers[instruction.rs1].value) >= i64(self.registers[instruction.rs2].value):
+                    branching = True
+                    pc_offset = instruction.imm_b
+            case Mnemonic.JALR:
+                self.rd(self.pc.value + self.INSTRUCTION_SIZE)
+                jumping = True
+                pc_new = ((self.registers[instruction.rs1].value + instruction.imm_i) >> 1) << 1
+            case Mnemonic.ADD:
+                self.rd(self.registers[instruction.rs1].value + self.registers[instruction.rs2].value)
+            case Mnemonic.BNE:
+                if self.registers[instruction.rs1].value != self.registers[instruction.rs2].value:
+                    branching = True
+                    pc_offset = instruction.imm_b
             case _:
                 raise Exception(f'invalid instruction: {instruction}')
+        if branching:
+            self.pc.value += pc_offset
+        elif jumping:
+            self.pc.value = pc_new
+        else:
+            self.pc.value += self.INSTRUCTION_SIZE

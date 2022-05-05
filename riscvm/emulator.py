@@ -4,6 +4,7 @@ import sys
 from riscvm import CPU
 from riscvm.bus import Bus
 from riscvm.exception import StopException
+from riscvm.instruction import get_asm, info
 from riscvm.ram import RAM
 
 class Emulator:
@@ -17,7 +18,13 @@ class Emulator:
 
     def run(self):
         try:
+            self.cpu.registers[1].value = -1
+            self.cpu.registers[10].value = 5
             while self.cpu.fetch():
+                print(f'{self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
+                print(info(self.cpu.instruction))
+                for reg in self.cpu.registers:
+                    print(reg)
                 self.cpu.execute()
         except StopException:
             pass
