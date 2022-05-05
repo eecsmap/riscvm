@@ -3,20 +3,24 @@ import sys
 
 from riscvm import CPU
 from riscvm.bus import Bus
+from riscvm.exception import StopException
 from riscvm.ram import RAM
 
 class Emulator:
 
     def __init__(self, program):
-        ram = RAM(len(program))
-        ram.load(program)
+        ram = RAM()
+        ram.data = bytearray(program)
         bus = Bus()
-        bus.add_device(ram, (0, len(ram)))
+        bus = Bus().add_device(ram, (0, len(ram)))
         self.cpu = CPU(bus)
 
     def run(self):
-        while self.cpu.fetch():
-            self.cpu.execute()
+        try:
+            while self.cpu.fetch():
+                self.cpu.execute()
+        except StopException:
+            pass
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

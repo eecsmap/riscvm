@@ -3,3 +3,6 @@ class Exception(Exception):
 
 def error(message):
     raise Exception(message)
+
+class StopException(Exception):
+    ''''''

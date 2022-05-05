@@ -1,16 +1,17 @@
 from riscvm import error, gen
 
+
 class RAM:
 
-    def __init__(self, size):
+    def __init__(self, size=0):
         # handle hold the lifetime of mmap object
         self.size = size
-        self.handle = gen('mem.dat', size)
-        self.data = next(self.handle)
-        #self.data = [0 for i in range(size)]
+        #self.handle = gen('mem.dat', size)
+        #self.data = next(self.handle)
+        self.data = bytearray(size)
 
     def __len__(self):
-        return self.size
+        return len(self.data)
 
     def read(self, address, size):
         if size == 1:
@@ -66,7 +67,9 @@ class RAM:
             self.data[pos] = byte
             pos += 1
 
-def create_ram(content):
-    ram = RAM(len(content))
+
+def create_ram(size, content):
+    size = max(size, len(content))
+    ram = RAM(size)
     ram.data[:len(content)] = content
     return ram

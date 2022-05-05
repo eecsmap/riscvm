@@ -1,7 +1,7 @@
 from riscvm import Register
 from riscvm import Instruction
-from riscvm import Bus
 from riscvm import error
+from riscvm.exception import StopException
 from riscvm.mnemonics import Mnemonic
 from riscvm.register import FixedRegister
 from riscvm.utils import i8, i16, i32, i64, u8, u16, u32, u64, todo
@@ -30,7 +30,7 @@ class CPU:
             self.instruction = instruction
         
         if self.instruction.value == 0:
-            error('stop at zero content instruction')
+            raise StopException('stop at zero content instruction')
 
         instruction = self.instruction
         match get_mnemonic(instruction):

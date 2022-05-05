@@ -26,3 +26,4 @@ class Bus:
         self.range_manager.add_range(range)
         assert range not in self.devices
         self.devices[range] = device
+        return self
