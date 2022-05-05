@@ -216,10 +216,10 @@ def regc(reg_index):
         't3', 't4', 't5', 't6'
     )[reg_index]
 
-def get_asm(instruction, use_symbol=False):
+def get_asm(instruction, use_symbol=False, pc=0):
     reg = regc if use_symbol else regx
     sep = ','
-    mnemonic = f'{get_mnemonic(instruction)}'
+    mnemonic = f'{get_mnemonic(instruction):4}'
     if instruction.type is InstructionType.R:
         return mnemonic + '\t' + sep.join([
             f'{reg(instruction.rd)}',
@@ -246,7 +246,7 @@ def get_asm(instruction, use_symbol=False):
         return mnemonic + '\t' + sep.join([
             f'{reg(instruction.rs1)}',
             f'{reg(instruction.rs2)}',
-            f'{instruction.imm_b}',
+            f'{instruction.imm_b + pc:x}',
         ])
     if instruction.type is InstructionType.U:
         return mnemonic + '\t' + sep.join([
@@ -281,7 +281,7 @@ def info(instruction):
 class Instruction:
 
     def __init__(self, value):
-        self.value = value
+        self.value = u32(value)
 
     @property
     def type(self):
