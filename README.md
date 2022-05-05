@@ -1,9 +1,19 @@
 # RISC-V(irtual) Machine
 
+## Requirement
+- python3.10
+- pytest
+
 ## Usage
 
+Run tests.
 ```
 pytest
+```
+
+A quick sanity check.
+```
+python3 -m riscvm.emulator < tests/fib.bin
 ```
 
 ## Develop
