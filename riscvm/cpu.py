@@ -1,7 +1,6 @@
 from riscvm import Register
 from riscvm import Instruction
 from riscvm import error
-from riscvm.exception import StopException
 from riscvm.mnemonics import Mnemonic
 from riscvm.register import FixedRegister
 from riscvm.utils import i8, i16, i32, i64, u8, u16, u32, u64, todo
@@ -28,9 +27,6 @@ class CPU:
     def execute(self, instruction=None):
         if instruction:
             self.instruction = instruction
-        
-        if self.instruction.value == 0:
-            raise StopException('stop at zero content instruction')
 
         instruction = self.instruction
         branching = False
@@ -81,7 +77,7 @@ class CPU:
                     branching = True
                     pc_offset = instruction.imm_b
             case _:
-                raise Exception(f'invalid instruction: {instruction}')
+                error(f'invalid instruction: {instruction}')
         if branching:
             self.pc.value += pc_offset
         elif jumping:

@@ -1,8 +1,8 @@
-class Exception(Exception):
+class BaseException(Exception):
     '''riscvm base exception'''
 
-def error(message):
-    raise Exception(message)
+class InternalException(BaseException):
+    '''riscvm internal exception'''
 
-class StopException(Exception):
-    ''''''
+def error(message):
+    raise InternalException(message)

@@ -137,9 +137,6 @@ def get_type(instruction):
         0b110_1111: InstructionType.J,
     }.get(instruction.opcode, InstructionType.UNDEFINED)
 
-class InternalException(Exception):
-    pass
-
 def h(content):
     '''hightlight content'''
     return '\x1b[31m' + content + '\x1b[0m'
