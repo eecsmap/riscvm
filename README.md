@@ -23,3 +23,27 @@ python3 -m riscvm.emulator < tests/fib.bin
 - `bash pub.sh`
 - Install this package in editable mode (i.e. setuptools "develop mode") `pip install -e .`
 - Sanity check `echo 12345678 | python3 -m riscvm`
+
+## (Optional) Build RISC-V tool-chain
+Read https://github.com/riscv-collab/riscv-gnu-toolchain
+
+### On Linux
+```
+sudo apt install autoconf automake autotools-dev curl python3 libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat-dev
+
+git clone https://github.com/riscv/riscv-gnu-toolchain`
+
+cd riscv-gnu-toolchain
+
+./configure --prefix=/opt/rv64g --with-arch=rv64g --with-abi=lp64d
+
+sudo make linux
+```
+
+## Build test binaries
+Using tools from /opt/rv64g we just built.
+```
+gcc -S fib.c
+gcc -Wl,-Ttext=0 -nostdlib -o fib.o fib.s
+objcopy -O binary fib.o fib.bin
+```

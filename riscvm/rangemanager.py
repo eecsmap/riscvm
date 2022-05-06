@@ -1,5 +1,5 @@
 from bisect import bisect_left, bisect_right
-
+from riscvm.exception import error
 class RangeMangerException(Exception):
     pass
 
@@ -11,9 +11,9 @@ class RangeManger:
 
     def add_range(self, range):
         if range[0] < 0 or range[1] <= 0:
-            raise RangeMangerException(f'invalid range {range}')
+            error(f'invalid range {range}')
         if range[0] + range[1] < range[0]:
-            raise RangeMangerException(f'overflow range {range}')
+            error(f'overflow range {range}')
 
         position = bisect_left(self.starts, range[0])
         if position == len(self.starts):
@@ -23,11 +23,11 @@ class RangeManger:
 
         assert position != len(self.starts)
         if self.starts[position] == range[0]:
-            raise RangeMangerException(f'range {range} cannot fit in')
+            error(f'range {range} cannot fit in')
         
         assert self.starts[position] > range[0]
         if range[0] + range[1] > self.starts[position]:
-            raise RangeMangerException(f'range {range} cannot fit in')
+            error(f'range {range} cannot fit in')
     
         self.starts.insert(position, range[0])
         self.sizes.insert(position, range[1])
@@ -35,19 +35,19 @@ class RangeManger:
     def get_range(self, start_address, size):
         range = (start_address, size)
         if range[0] < 0 or range[1] <= 0:
-            raise RangeMangerException(f'invalid range {range}')
+            error(f'invalid range {range}')
         if range[0] + range[1] < range[0]:
-            raise RangeMangerException(f'overflow range {range}')
+            error(f'overflow range {range}')
 
         # do not handle cross device access yet!
         position = bisect_right(self.starts, range[0]) - 1
         if position < 0:
-            raise RangeMangerException('no device mapped to this address range')
+            error('no device mapped to this address range')
         target_start = self.starts[position]
         target_size = self.sizes[position]
         assert target_start <= range[0]
         if range[0] + range[1] > target_start + target_size:
-            raise RangeMangerException('access beyond the device address range')
+            error('access beyond the device address range')
         return (target_start, target_size)
 
 def test_rangemanger():
