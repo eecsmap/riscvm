@@ -13,8 +13,12 @@ pytest
 
 A quick sanity check.
 ```
-python3 -m riscvm.emulator < tests/fib.bin
+python3 -m riscvm.emulator tests/fib.bin
 ```
+
+### Next Step Iteration
+There is a xv6 kernel binary provided in tests.
+Run `python3 -m riscvm.emulator tests/xv6-kernel.bin` to find next instruction to implement:)
 
 ## Develop
 
