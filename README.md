@@ -17,8 +17,10 @@ python3 -m riscvm.emulator tests/fib.bin
 ```
 
 ### Next Step Iteration
-There is a xv6 kernel binary provided in tests.
-Run `python3 -m riscvm.emulator tests/xv6-kernel.bin` to find next instruction to implement:)
+There is a xv6 kernel binary provided in tests. We use it to drive the development.
+To find next instruction to implement, simply run:
+`python3 -m riscvm.emulator tests/xv6-kernel.bin`
+Make sure which ever instruction added is well tested too.
 
 ## Develop
 
