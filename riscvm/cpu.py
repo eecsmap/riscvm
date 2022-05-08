@@ -84,6 +84,8 @@ class CPU:
             case Mnemonic.CSRRS:
                 self.rd(self.csrs.setdefault(instruction.csr, 0))
                 self.csrs[instruction.csr] |= instruction.rs1
+            case Mnemonic.MUL:
+                self.rd(self.registers[instruction.rs1].value * self.registers[instruction.rs2].value)
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:
