@@ -1,6 +1,6 @@
 from enum import Enum, auto
 from textwrap import indent
-from .mnemonics import get_mnemonic
+from .mnemonics import Mnemonic, get_mnemonic
 
 VERBOSE = True
 USE_SYMBOL = True
@@ -213,49 +213,61 @@ def regc(reg_index):
         't3', 't4', 't5', 't6'
     )[reg_index]
 
+def csr_name(csr_index):
+    match csr_index:
+        case 0xf14: return 'mhartid'
+    return f'0x{csr_index:03x}'
+
 def get_asm(instruction, use_symbol=False, pc=0):
     reg = regc if use_symbol else regx
     sep = ','
-    mnemonic = f'{get_mnemonic(instruction):4}'
+    mnemonic = get_mnemonic(instruction)
+    mnemonic_sec = f'{mnemonic:4}'
     if instruction.type is InstructionType.R:
-        return mnemonic + '\t' + sep.join([
+        return mnemonic_sec + '\t' + sep.join([
             f'{reg(instruction.rd)}',
             f'{reg(instruction.rs1)}',
             f'{reg(instruction.rs2)}',
         ])
     if instruction.type is InstructionType.I:
         if instruction.opcode == 0b000_0011:
-            return mnemonic + '\t' + sep.join([
+            return mnemonic_sec + '\t' + sep.join([
                 f'{reg(instruction.rd)}',
                 f'{instruction.imm_i}({reg(instruction.rs1)})',
             ])
-        return mnemonic + '\t' + sep.join([
+        return mnemonic_sec + '\t' + sep.join([
             f'{reg(instruction.rd)}',
             f'{reg(instruction.rs1)}',
             f'0x{instruction.imm_i & 0b11111:x}' if get_mnemonic(instruction) in ['slli', 'srli', 'srai'] else f'{instruction.imm_i}',
         ])
     if instruction.type is InstructionType.S:
-        return mnemonic + '\t' + sep.join([
+        return mnemonic_sec + '\t' + sep.join([
             f'{reg(instruction.rs2)}',
             f'{instruction.imm_s}({reg(instruction.rs1)})',
         ])
     if instruction.type is InstructionType.B:
-        return mnemonic + '\t' + sep.join([
+        return mnemonic_sec + '\t' + sep.join([
             f'{reg(instruction.rs1)}',
             f'{reg(instruction.rs2)}',
             f'{instruction.imm_b + pc:x}',
         ])
     if instruction.type is InstructionType.U:
-        return mnemonic + '\t' + sep.join([
+        return mnemonic_sec + '\t' + sep.join([
             f'{reg(instruction.rd)}',
             f'0x{section(instruction.imm_u, 12, 20):x}',
         ])
     if instruction.type is InstructionType.J:
-        return mnemonic + '\t' + sep.join([
+        return mnemonic_sec + '\t' + sep.join([
             f'{reg(instruction.rd)}',
             f'{instruction.imm_j}',
         ])
-    return mnemonic
+    if mnemonic in {Mnemonic.CSRRS}:
+        return mnemonic_sec + '\t' + sep.join([
+            f'{reg(instruction.rd)}',
+            f'{csr_name(instruction.csr)}',
+            f'{reg(instruction.rs1)}'
+        ])
+    return mnemonic_sec
 
 def info(instruction):
     return indent('\n'.join([
@@ -339,7 +351,11 @@ class Instruction:
     
     @property
     def shamt(self):
-        return shamt(self)
+        return shamt(self.value)
+
+    @property
+    def csr(self):
+        return csr(self.value)
 
     @property
     def asm(self):

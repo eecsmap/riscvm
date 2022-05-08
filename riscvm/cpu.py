@@ -15,6 +15,7 @@ class CPU:
         self.registers[0] = FixedRegister(0, 'x0')
         self.pc = Register() #0x8000_0000)
         self.bus = bus
+        self.csrs = {} # hopefully we are not going to use csrs too frequently, otherwise we need an array
     
     def fetch(self):
         print(f'debug: fetching from 0x{self.pc.value:016X}')
@@ -76,6 +77,13 @@ class CPU:
                 if self.registers[instruction.rs1].value != self.registers[instruction.rs2].value:
                     branching = True
                     pc_offset = instruction.imm_b
+            case Mnemonic.AUIPC:
+                self.rd(self.pc.value + instruction.imm_u << 12)
+            case Mnemonic.LUI:
+                self.rd(instruction.imm_u << 12)
+            case Mnemonic.CSRRS:
+                self.rd(self.csrs.setdefault(instruction.csr, 0))
+                self.csrs[instruction.csr] |= instruction.rs1
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:

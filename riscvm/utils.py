@@ -130,6 +130,7 @@ imm_j = lambda x: i21(
     | section(x, 21, 10) << 1)
 shamt = partial(section, pos=20, nbits=6) # RV64
 atomic = lambda x: funct7(x) >> 2
+csr = partial(section, pos=20, nbits=12)
 
 def _test_sections():
     '''
