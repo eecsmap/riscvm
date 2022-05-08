@@ -53,3 +53,9 @@ gcc -S fib.c
 gcc -Wl,-Ttext=0 -nostdlib -o fib.o fib.s
 objcopy -O binary fib.o fib.bin
 ```
+
+## example dev workflow
+1. run `make next` to find next instruction to implement.
+2. add test accordingly into tests/test_isa.py, you might find output from step 1 useful in creating tests.
+3. run `make test` to run tests.
+4. add implementation to pass tests.
