@@ -85,6 +85,9 @@ class CPU:
             case Mnemonic.CSRRS:
                 self.rd(self.csrs.setdefault(instruction.csr, 0))
                 self.csrs[instruction.csr] |= instruction.rs1
+            case Mnemonic.CSRRW:
+                self.rd(self.csrs.setdefault(instruction.csr, 0))
+                self.csrs[instruction.csr] = instruction.rs1
             case Mnemonic.MUL:
                 self.rd(self.registers[instruction.rs1].value * self.registers[instruction.rs2].value)
             case Mnemonic.JAL:
@@ -93,6 +96,14 @@ class CPU:
                 pc_new = self.pc.value + instruction.imm_j
             case Mnemonic.SD:
                 self.bus.write(self.registers[instruction.rs1].value + instruction.imm_s, 8, self.registers[instruction.rs2].value)
+            case Mnemonic.AND:
+                self.rd(self.registers[instruction.rs1].value & self.registers[instruction.rs2].value)
+            case Mnemonic.OR:
+                self.rd(self.registers[instruction.rs1].value | self.registers[instruction.rs2].value)
+            case Mnemonic.ORI:
+                self.rd(self.registers[instruction.rs1].value | instruction.imm_i)
+            case Mnemonic.SLLIW:
+                self.rd(self.registers[instruction.rs1].value << (instruction.shamt & 0b11111))
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:
