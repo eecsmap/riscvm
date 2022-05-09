@@ -27,7 +27,6 @@ class CPU:
         self.csrs = {} # hopefully we are not going to use csrs too frequently, otherwise we need an array
     
     def fetch(self):
-        print(f'debug: fetching from 0x{self.pc.value:016X}')
         self.instruction = Instruction(self.bus.read(self.pc.value, self.INSTRUCTION_SIZE))
         return self.instruction
 
