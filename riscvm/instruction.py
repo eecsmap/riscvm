@@ -129,6 +129,7 @@ def get_type(instruction):
         0b000_0011: InstructionType.I,
         0b001_0011: InstructionType.I,
         0b001_0111: InstructionType.U,
+        0b001_1011: InstructionType.I,
         0b010_0011: InstructionType.S,
         0b011_0011: InstructionType.R,
         0b011_0111: InstructionType.U,

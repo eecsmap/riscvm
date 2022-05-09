@@ -76,6 +76,10 @@ class CPU:
                 if i64(self.registers[instruction.rs1].value) >= i64(self.registers[instruction.rs2].value):
                     branching = True
                     pc_offset = instruction.imm_b
+            case Mnemonic.BEQ:
+                if self.registers[instruction.rs1].value == self.registers[instruction.rs2].value:
+                    branching = True
+                    pc_offset = instruction.imm_b
             case Mnemonic.JALR:
                 jumping = True
                 pc_new = ((self.registers[instruction.rs1].value + instruction.imm_i) >> 1) << 1
