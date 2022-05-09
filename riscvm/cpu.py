@@ -1,3 +1,4 @@
+from enum import Enum
 from riscvm import Register
 from riscvm import Instruction
 from riscvm import error
@@ -5,6 +6,13 @@ from riscvm.mnemonics import Mnemonic
 from riscvm.register import FixedRegister
 from riscvm.utils import i8, i16, i32, i64, u8, u16, u32, u64, todo
 from .instruction import get_mnemonic
+
+
+class CSR(Enum):
+    MEPC = 0x341
+
+    def __str__(self):
+        return f'{self.name}'
 
 class CPU:
 
@@ -84,10 +92,10 @@ class CPU:
                 self.rd(instruction.imm_u)
             case Mnemonic.CSRRS:
                 self.rd(self.csrs.setdefault(instruction.csr, 0))
-                self.csrs[instruction.csr] |= instruction.rs1
+                self.csrs[instruction.csr] |= self.registers[instruction.rs1].value
             case Mnemonic.CSRRW:
                 self.rd(self.csrs.setdefault(instruction.csr, 0))
-                self.csrs[instruction.csr] = instruction.rs1
+                self.csrs[instruction.csr] = self.registers[instruction.rs1].value
             case Mnemonic.MUL:
                 self.rd(self.registers[instruction.rs1].value * self.registers[instruction.rs2].value)
             case Mnemonic.JAL:
@@ -106,6 +114,10 @@ class CPU:
                 self.rd(self.registers[instruction.rs1].value << (instruction.shamt & 0b11111))
             case Mnemonic.ADDIW:
                 self.rd(i32(self.registers[instruction.rs1].value + instruction.imm_i))
+            case Mnemonic.MRET:
+                # return from a trap in M-mode
+                jumping = True
+                pc_new = self.csrs[CSR.MEPC.value]
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:
