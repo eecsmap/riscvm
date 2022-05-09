@@ -10,46 +10,51 @@ class RangeManger:
         self.sizes = []
 
     def add_range(self, range):
-        if range[0] < 0 or range[1] <= 0:
+        address = range[0]
+        size = range[1]
+        if address < 0 or size <= 0:
             error(f'invalid range {range}')
-        if range[0] + range[1] < range[0]:
+        if address + size < address:
             error(f'overflow range {range}')
 
-        position = bisect_left(self.starts, range[0])
+        position = bisect_left(self.starts, address)
         if position == len(self.starts):
-            self.starts.append(range[0])
-            self.sizes.append(range[1])
+            self.starts.append(address)
+            self.sizes.append(size)
             return
 
         assert position != len(self.starts)
-        if self.starts[position] == range[0]:
+        if self.starts[position] == address:
             error(f'range {range} cannot fit in')
         
-        assert self.starts[position] > range[0]
-        if range[0] + range[1] > self.starts[position]:
+        assert self.starts[position] > address
+        if address + size > self.starts[position]:
             error(f'range {range} cannot fit in')
     
-        self.starts.insert(position, range[0])
-        self.sizes.insert(position, range[1])
+        self.starts.insert(position, address)
+        self.sizes.insert(position, size)
 
-    def get_range(self, start_address, size):
-        range = (start_address, size)
-        if range[0] < 0 or range[1] <= 0:
+    def get_range(self, address, size):
+        '''
+        return the range(s) holding access at given address with given size
+        '''
+        range = (address, size)
+        if address < 0 or size <= 0:
             error(f'invalid range {range}')
-        if range[0] + range[1] < range[0]:
+        if address + size < address:
             error(f'overflow range {range}')
 
         # do not handle cross device access yet!
-        position = bisect_right(self.starts, range[0]) - 1
+        position = bisect_right(self.starts, address) - 1
         if position < 0:
             error('no device mapped to this address range')
         target_start = self.starts[position]
         target_size = self.sizes[position]
-        assert target_start <= range[0]
-        if range[0] + range[1] > target_start + target_size:
-            error('access beyond the device address range')
-        return (target_start, target_size)
-
+        assert target_start <= address
+        if address + size <= target_start + target_size:
+            return (target_start, target_size)
+        error(f'no device mapped to cover (0x{address:x}, 0x{address+size:x})')
+        
 def test_rangemanger():
     range_manger = RangeManger()
     range_manger.add_range((-1, 1))
