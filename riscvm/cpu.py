@@ -77,9 +77,9 @@ class CPU:
                     branching = True
                     pc_offset = instruction.imm_b
             case Mnemonic.JALR:
-                self.rd(self.pc.value + self.INSTRUCTION_SIZE)
                 jumping = True
                 pc_new = ((self.registers[instruction.rs1].value + instruction.imm_i) >> 1) << 1
+                self.rd(self.pc.value + self.INSTRUCTION_SIZE)
             case Mnemonic.ADD:
                 self.rd(self.registers[instruction.rs1].value + self.registers[instruction.rs2].value)
             case Mnemonic.BNE:
