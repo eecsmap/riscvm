@@ -261,7 +261,7 @@ def get_asm(instruction, use_symbol=False, pc=0):
             f'{reg(instruction.rd)}',
             f'{instruction.imm_j + pc:x}',
         ])
-    if mnemonic in {Mnemonic.CSRRS}:
+    if mnemonic in {Mnemonic.CSRRS, Mnemonic.CSRRW}:
         return mnemonic_sec + '\t' + sep.join([
             f'{reg(instruction.rd)}',
             f'{csr_name(instruction.csr)}',
