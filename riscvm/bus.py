@@ -20,10 +20,14 @@ class Bus:
 
     def write(self, address, size, value):
         device, range = self.get_device(address, size)
-        return device.write(address -range[0], size, value)
+        try:
+            device.write(address - range[0], size, value)
+        except IndexError as e:
+            error(f'fail to write value {value} to {address:016x} (device address: {range[0]:x}) with size {size}\n{e}')
 
     def add_device(self, device, range):
         self.range_manager.add_range(range)
         assert range not in self.devices
         self.devices[range] = device
+        print(f'*** add device into {range}')
         return self
