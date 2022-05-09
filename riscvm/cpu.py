@@ -104,6 +104,8 @@ class CPU:
                 self.rd(self.registers[instruction.rs1].value | instruction.imm_i)
             case Mnemonic.SLLIW:
                 self.rd(self.registers[instruction.rs1].value << (instruction.shamt & 0b11111))
+            case Mnemonic.ADDIW:
+                self.rd(i32(self.registers[instruction.rs1].value + instruction.imm_i))
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:

@@ -107,6 +107,8 @@ class Mnemonic(Enum):
     AMOMAX_D = auto()
     AMOMINU_D = auto()
     AMOMAXU_D = auto()
+    # Privileged
+    MRET = auto()
 
     def __str__(self):
         return f'{self.name}'.replace('_', '.')
@@ -266,7 +268,8 @@ MNEMONICS = {
             0b0000000: {
                 0b00000: Mnemonic.ECALL,
                 0b00001: Mnemonic.EBREAK,
-            }
+            },
+            0b0011000: Mnemonic.MRET,
         },
         0b001: Mnemonic.CSRRW,
         0b010: Mnemonic.CSRRS,

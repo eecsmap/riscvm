@@ -20,6 +20,10 @@ class Emulator:
         self.cpu = CPU(bus)
         self.cpu.pc.value = address
         #self.cpu.sp.value = (stack_end - 1) & -16
+        # core local interrupt
+        clint_base = 0x200_0000
+        clint_size = 0x1_0000
+        bus.add_device(RAM(clint_size), (clint_base, clint_base + clint_size))
 
     def run(self, limit=0):
         count = 0
