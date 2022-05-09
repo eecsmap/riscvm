@@ -11,7 +11,7 @@ def data_loaded(hexdata=None):
     cpu = CPU(bus)
     return cpu
 
-td_1 = (
+td_I = (
     ('ff', 0x00000083, 0xffff_ffff_ffff_ffff), # lb x1, 0(x0)
     ('42ff', 0x00001083, 0xffff_ffff_ffff_ff42), # lh x1, 0(x0)
     ('ff', 0x00004083, 0xff), # lbu x1, 0(x0)
@@ -19,8 +19,8 @@ td_1 = (
     ('', 0x02a00093, 42), # addi x1, x0, 42
 )
 
-@pytest.mark.parametrize('data,instruction,expected', td_1)
-def test_x1(data, instruction, expected):
+@pytest.mark.parametrize('data,instruction,expected', td_I)
+def test_I(data, instruction, expected):
     cpu = data_loaded(data)
     cpu.execute(Instruction(instruction)) 
     assert cpu.registers[1].value == expected
@@ -34,9 +34,23 @@ td_R = (
 )
 
 @pytest.mark.parametrize('rd, rs1, rs2, rs1_value, rs2_value, instruction, rd_expected', td_R)
-def test_xori(rd, rs1, rs2, rs1_value, rs2_value, instruction, rd_expected):
+def test_R(rd, rs1, rs2, rs1_value, rs2_value, instruction, rd_expected):
     cpu = data_loaded()
     cpu.registers[rs1].value = rs1_value
     cpu.registers[rs2].value = rs2_value
     cpu.execute(Instruction(instruction))
     assert cpu.registers[rd].value == rd_expected
+
+
+td_J = (
+    # rd, pc_value, instruction, rd_expected, pc_expected
+    (1, 0x1000, 0x08c000ef, 0x1004, 0x108c), # JAL    ra, 0x8c
+)
+
+@pytest.mark.parametrize('rd, pc_value, instruction, rd_expected, pc_expected', td_J)
+def test_jump(rd, pc_value, instruction, rd_expected, pc_expected):
+    cpu = data_loaded()
+    cpu.pc.value = pc_value
+    cpu.execute(Instruction(instruction))
+    assert cpu.registers[rd].value == rd_expected
+    assert cpu.pc.value == pc_expected

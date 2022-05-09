@@ -259,7 +259,7 @@ def get_asm(instruction, use_symbol=False, pc=0):
     if instruction.type is InstructionType.J:
         return mnemonic_sec + '\t' + sep.join([
             f'{reg(instruction.rd)}',
-            f'{instruction.imm_j}',
+            f'{instruction.imm_j + pc:x}',
         ])
     if mnemonic in {Mnemonic.CSRRS}:
         return mnemonic_sec + '\t' + sep.join([
