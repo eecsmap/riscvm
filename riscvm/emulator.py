@@ -32,8 +32,10 @@ class Emulator:
             print(info(self.cpu.instruction))
             self.cpu.execute()
             for reg in self.cpu.registers:
+                pass
                 print(reg)
             count += 1
+            #if count == 78: break
             if (limit and count == limit):
                 break
 
