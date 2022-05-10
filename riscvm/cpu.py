@@ -114,6 +114,8 @@ class CPU:
             
             case Mnemonic.AND:
                 self.rd(self.registers[instruction.rs1].value & self.registers[instruction.rs2].value)
+            case Mnemonic.ANDI:
+                self.rd(self.registers[instruction.rs1].value & instruction.imm_i)
             case Mnemonic.OR:
                 self.rd(self.registers[instruction.rs1].value | self.registers[instruction.rs2].value)
             case Mnemonic.ORI:
