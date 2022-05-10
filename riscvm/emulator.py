@@ -38,7 +38,7 @@ class Emulator:
                 #print(reg)
             count += 1
             #if count == 90: break # before calling consoleinit()
-            #if count == 100: break # checking .con
+            #if count == 440: break # checking .con
             if (limit and count == limit):
                 break
 
