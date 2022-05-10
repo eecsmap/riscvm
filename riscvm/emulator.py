@@ -23,6 +23,9 @@ class Emulator:
         clint_base = 0x200_0000
         clint_size = 0x1_0000
         bus.add_device(RAM(clint_size), (clint_base, clint_size))
+        UART_BASE = 0x1000_0000
+        UART_SIZE = 0x100
+        bus.add_device(RAM(UART_SIZE), (UART_BASE, UART_SIZE))
 
     def run(self, limit=0):
         count = 0
