@@ -11,7 +11,7 @@ class Emulator:
     def __init__(self, program, address=0):
         ram = RAM()
         ram.data = bytearray(program)
-        stack = RAM(0x2000) # 2 pages of stack
+        stack = RAM(0x200000) # 20MB for bss, stack, etc.
         bus = Bus()
         # hack: xv6 kernel bin assume to have this place as stack
         stack_begin = 0xb000
@@ -27,7 +27,7 @@ class Emulator:
     def run(self, limit=0):
         count = 0
         while self.cpu.fetch():
-            print(f'[{count:-8}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
+            print(f'[{count:-5}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
             #print(info(self.cpu.instruction))
             self.cpu.execute()
             for reg in self.cpu.registers:
