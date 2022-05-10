@@ -107,6 +107,11 @@ class CPU:
                 pc_new = self.pc.value + instruction.imm_j
             case Mnemonic.SD:
                 self.bus.write(self.registers[instruction.rs1].value + instruction.imm_s, 8, self.registers[instruction.rs2].value)
+            case Mnemonic.SW:
+                self.bus.write(self.registers[instruction.rs1].value + instruction.imm_s, 4, self.registers[instruction.rs2].value)
+            case Mnemonic.SB:
+                self.bus.write(self.registers[instruction.rs1].value + instruction.imm_s, 1, self.registers[instruction.rs2].value)
+            
             case Mnemonic.AND:
                 self.rd(self.registers[instruction.rs1].value & self.registers[instruction.rs2].value)
             case Mnemonic.OR:
