@@ -128,6 +128,13 @@ class CPU:
                 # return from a trap in M-mode
                 jumping = True
                 pc_new = self.csrs[CSR.MEPC.value]
+            # Atomic Memory Operations
+            case Mnemonic.AMOSWAP_W:
+                old_value = i32(self.bus.read(self.registers[instruction.rs1].value, 4))
+                self.bus.write(self.registers[instruction.rs1].value, 4, self.registers[instruction.rs2].value)
+                self.rd(old_value)
+            case Mnemonic.FENCE:
+                pass
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:

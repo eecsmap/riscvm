@@ -16,7 +16,9 @@ class Bus:
 
     def read(self, address, size):
         device, range = self.get_device(address, size)
-        return device.read(address - range[0], size)
+        value = device.read(address - range[0], size)
+        print(f'*** read 0x{size:x} bytes from 0x{address:x}: 0x{value:x}')
+        return value
 
     def write(self, address, size, value):
         device, range = self.get_device(address, size)
