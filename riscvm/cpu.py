@@ -85,6 +85,8 @@ class CPU:
                 self.rd(self.pc.value + self.INSTRUCTION_SIZE)
             case Mnemonic.ADD:
                 self.rd(self.registers[instruction.rs1].value + self.registers[instruction.rs2].value)
+            case Mnemonic.SUB:
+                self.rd(self.registers[instruction.rs1].value - self.registers[instruction.rs2].value)
             case Mnemonic.BNE:
                 if self.registers[instruction.rs1].value != self.registers[instruction.rs2].value:
                     branching = True
