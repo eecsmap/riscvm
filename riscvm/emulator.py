@@ -9,7 +9,7 @@ from riscvm.uart import UART
 
 class Emulator:
 
-    def __init__(self, program, uart_output_file, address=0):
+    def __init__(self, program, uart_output_file=None, address=0):
         ram = RAM()
         ram.data = bytearray(program)
         stack = RAM(0x200000) # 20MB for bss, stack, etc.

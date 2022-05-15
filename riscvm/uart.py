@@ -73,7 +73,8 @@ class UART:
                     self.dll = value
                 else:
                     # THR
-                    self.output.write(chr(value).encode())
+                    if self.output:
+                        self.output.write(chr(value).encode())
             case 1:
                 if self.dlab:
                     self.dlm = value
