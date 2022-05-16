@@ -4,6 +4,10 @@ import sys
 
 from riscvm import get_asm, Instruction
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin.buffer)

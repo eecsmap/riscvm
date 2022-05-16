@@ -1,5 +1,8 @@
 from riscvm import u64
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Register:
     '''
     Represent register as unsigned 64bit integer

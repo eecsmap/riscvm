@@ -1,5 +1,8 @@
 from functools import partial
 
+import logging
+logger = logging.getLogger(__name__)
+
 # ===========================================================================
 # converters of an integer value
 # ------------------------------

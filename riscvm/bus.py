@@ -2,6 +2,9 @@ from riscvm import error
 from riscvm import RAM
 from riscvm.rangemanager import RangeManger
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Bus:
 
     def __init__(self):
@@ -17,7 +20,7 @@ class Bus:
     def read(self, address, size):
         device, range = self.get_device(address, size)
         value = device.read(address - range[0], size)
-        print(f'*** read 0x{size:x} bytes from 0x{address:x}: 0x{value:x}')
+        logger.debug(f'*** read 0x{size:x} bytes from 0x{address:x}: 0x{value:x}')
         return value
 
     def write(self, address, size, value):

@@ -2,6 +2,9 @@ from enum import Enum, auto
 from textwrap import indent
 from .mnemonics import Mnemonic, get_mnemonic
 
+import logging
+logger = logging.getLogger(__name__)
+
 VERBOSE = True
 USE_SYMBOL = True
 

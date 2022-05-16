@@ -7,6 +7,8 @@ from riscvm.register import FixedRegister
 from riscvm.utils import i8, i16, i32, i64, u8, u16, u32, u64, todo
 from .instruction import get_mnemonic
 
+import logging
+logger = logging.getLogger(__name__)
 
 class CSR(Enum):
     MEPC = 0x341
@@ -89,6 +91,14 @@ class CPU:
                 self.rd(self.registers[instruction.rs1].value - self.registers[instruction.rs2].value)
             case Mnemonic.BNE:
                 if self.registers[instruction.rs1].value != self.registers[instruction.rs2].value:
+                    branching = True
+                    pc_offset = instruction.imm_b
+            case Mnemonic.BLTU:
+                if u64(self.registers[instruction.rs1].value) < u64(self.registers[instruction.rs2].value):
+                    branching = True
+                    pc_offset = instruction.imm_b
+            case Mnemonic.BGEU:
+                if u64(self.registers[instruction.rs1].value) >= u64(self.registers[instruction.rs2].value):
                     branching = True
                     pc_offset = instruction.imm_b
             case Mnemonic.AUIPC:
