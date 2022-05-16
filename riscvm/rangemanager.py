@@ -1,5 +1,9 @@
 from bisect import bisect_left, bisect_right
 from riscvm.exception import error
+
+import logging
+logger = logging.getLogger(__name__)
+
 class RangeMangerException(Exception):
     pass
 

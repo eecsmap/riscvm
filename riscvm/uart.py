@@ -4,6 +4,9 @@ from riscvm import error
 refer:
     https://www.scs.stanford.edu/10wi-cs140/pintos/specs/pc16550d.pdf
 '''
+import logging
+logger = logging.getLogger(__name__)
+
 # registers
 #define RHR 0                 // receive holding register (for input bytes)
 #define THR 0                 // transmit holding register (for output bytes)
@@ -58,13 +61,13 @@ class UART:
                 # LSR
                 if self.allow_send:
                     value = LSR_TX_IDLE
-        print(f'*** uart read {size} bytes from address {address}: {value}')
+        logger.debug(f'*** uart read {size} bytes from address {address}: {value}')
         return value
 
     def write(self, address, size, value):
         assert size == 1, f'invalid address size {address}'
         value &= 0xff
-        print(f'*** uart write {size} bytes to address {address}: 0x{value:02X}')
+        logger.debug(f'*** uart write {size} bytes to address {address}: 0x{value:02X}')
 
         self.data[address] = value
         match address:
@@ -73,7 +76,8 @@ class UART:
                     self.dll = value
                 else:
                     # THR
-                    self.output.write(chr(value).encode())
+                    if self.output:
+                        self.output.write(chr(value).encode())
             case 1:
                 if self.dlab:
                     self.dlm = value

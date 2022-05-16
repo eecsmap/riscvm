@@ -1,5 +1,63 @@
 import argparse
-import sys
+
+import logging.config
+
+
+LOGGING_CONFIG = {
+    'version': 1,
+    'disable_existing_loggers': True,
+    'formatters': {
+        'standard': {
+            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        },
+        'riscvm': {
+            'format': '%(message)s'
+        }
+    },
+    'handlers': {
+        'default': {
+            'level': 'DEBUG',
+            'formatter': 'standard',
+            'class': 'logging.StreamHandler',
+            'stream': 'ext://sys.stdout',  # Default is stderr
+        },
+        'riscvm': {
+            'level': 'DEBUG',
+            'formatter': 'riscvm',
+            'class': 'logging.StreamHandler',
+            'stream': 'ext://sys.stdout',  # Default is stderr
+        }
+    },
+    'loggers': {
+        '': {  # root logger
+            'handlers': ['default'],
+            'level': 'WARNING',
+            'propagate': False
+        },
+        'riscvm': {
+            'handlers': ['riscvm'],
+            'level': 'INFO',
+            'propagate': True
+        },
+        # 'riscvm.bus': {
+        #     'handlers': ['riscvm'],
+        #     'level': 'INFO',
+        #     'propagate': False
+        # },
+        # 'riscvm.uart': {
+        #     'handlers': ['riscvm'],
+        #     'level': 'DEBUG',
+        #     'propagate': False
+        # },
+        '__main__': {  # if __name__ == '__main__'
+            'handlers': ['default'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
+    }
+}
+
+logging.config.dictConfig(LOGGING_CONFIG)
 
 from riscvm import CPU
 from riscvm.bus import Bus
@@ -7,9 +65,12 @@ from riscvm.instruction import get_asm, info
 from riscvm.ram import RAM
 from riscvm.uart import UART
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Emulator:
 
-    def __init__(self, program, uart_output_file, address=0):
+    def __init__(self, program, uart_output_file=None, address=0):
         ram = RAM()
         ram.data = bytearray(program)
         stack = RAM(0x200000) # 20MB for bss, stack, etc.
@@ -44,6 +105,7 @@ class Emulator:
                 break
 
 if __name__ == '__main__':
+    import sys
     parser = argparse.ArgumentParser()
     parser.add_argument('file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin.buffer)
     parser.add_argument('uart_output', nargs='?', type=argparse.FileType('wb'), default=sys.stdout.buffer)
