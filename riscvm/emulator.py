@@ -50,8 +50,8 @@ LOGGING_CONFIG = {
         #     'propagate': False
         # },
         '__main__': {  # if __name__ == '__main__'
-            'handlers': ['default'],
-            'level': 'DEBUG',
+            'handlers': ['riscvm'],
+            'level': 'INFO',
             'propagate': False
         },
     }
@@ -92,12 +92,12 @@ class Emulator:
     def run(self, limit=0):
         count = 0
         while self.cpu.fetch():
-            print(f'[{count:-5}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
-            #print(info(self.cpu.instruction))
+            logger.info(f'[{count:-5}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
+            logger.debug(info(self.cpu.instruction))
             self.cpu.execute()
             for reg in self.cpu.registers:
                 pass
-                #print(reg)
+                logger.debug(reg)
             count += 1
             #if count == 90: break # before calling consoleinit()
             #if count == 440: break # checking .con
