@@ -6,4 +6,4 @@ unittest:
 	pytest
 
 next:
-	python3 -m riscvm.emulator tests/xv6-kernel.bin uart_out.txt
+	python3 -m riscvm.emulator --address 0x80000000 tests/kernel.bin uart_out.txt

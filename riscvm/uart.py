@@ -61,13 +61,13 @@ class UART:
                 # LSR
                 if self.allow_send:
                     value = LSR_TX_IDLE
-        logger.debug(f'*** uart read {size} bytes from address {address}: {value}')
+        #logger.debug(f'*** uart read {size} bytes from address {address}: {value}')
         return value
 
     def write(self, address, size, value):
         assert size == 1, f'invalid address size {address}'
         value &= 0xff
-        logger.debug(f'*** uart write {size} bytes to address {address}: 0x{value:02X}')
+        #logger.debug(f'*** uart write {size} bytes to address {address}: 0x{value:02X}')
 
         self.data[address] = value
         match address:

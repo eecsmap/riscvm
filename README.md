@@ -46,6 +46,14 @@ cd riscv-gnu-toolchain
 sudo make linux
 ```
 
+## Create binary kernel (Ubuntu 22.04 LTS)
+1. `sudo apt-get install git build-essential gdb-multiarch qemu-system-misc gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu`
+2. `git clone https://github.com/mit-pdos/xv6-riscv`
+3. `cd xv6-riscv`
+4. `make qemu`
+5. `riscv64-linux-gnu-objcopy -O binary kernel/kernel kernel.bin`
+6. `riscv64-linux-gnu-objdump -b binary -m riscv:rv64 -D kernel.bin --adjust-vma=0x80000000`
+
 ## Build test binaries
 Using tools from /opt/rv64g we just built.
 ```

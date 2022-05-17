@@ -73,7 +73,7 @@ class Emulator:
     def __init__(self, program, uart_output_file=None, address=0):
         ram = RAM()
         ram.data = bytearray(program)
-        stack = RAM(0x200000) # 20MB for bss, stack, etc.
+        stack = RAM(0x8000000) # 128MB for bss, stack, etc.
         bus = Bus()
         # hack: xv6 kernel bin assume to have this place as stack
         stack_begin = 0xb000
@@ -92,12 +92,13 @@ class Emulator:
     def run(self, limit=0):
         count = 0
         while self.cpu.fetch():
-            logger.info(f'[{count:-5}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
-            logger.debug(info(self.cpu.instruction))
+            #if count % 100000 == 0:
+            print(f'[{count:-5}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
+            #logger.debug(info(self.cpu.instruction))
             self.cpu.execute()
             for reg in self.cpu.registers:
                 pass
-                logger.debug(reg)
+                #logger.debug(reg)
             count += 1
             #if count == 90: break # before calling consoleinit()
             #if count == 440: break # checking .con
@@ -107,8 +108,9 @@ class Emulator:
 if __name__ == '__main__':
     import sys
     parser = argparse.ArgumentParser()
+    parser.add_argument('--address', type=lambda x: int(x, 16), default=0)
     parser.add_argument('file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin.buffer)
     parser.add_argument('uart_output', nargs='?', type=argparse.FileType('wb'), default=sys.stdout.buffer)
     args = parser.parse_args()
     data = args.file.read()
-    Emulator(data, args.uart_output).run()
+    Emulator(data, args.uart_output, address=args.address).run()
