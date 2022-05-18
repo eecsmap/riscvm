@@ -1,6 +1,6 @@
 from enum import Enum
 from riscvm import Register
-from riscvm import Instruction
+from riscvm.instruction import Instruction, CompressedInstruction
 from riscvm import error
 from riscvm.mnemonics import Mnemonic
 from riscvm.register import FixedRegister
@@ -18,6 +18,7 @@ class CSR(Enum):
 
 class CPU:
 
+    COMPRESSED_INSTRUCTION_SIZE = 2
     INSTRUCTION_SIZE = 4
 
     def __init__(self, bus):
@@ -29,7 +30,12 @@ class CPU:
         self.csrs = {} # hopefully we are not going to use csrs too frequently, otherwise we need an array
     
     def fetch(self):
-        self.instruction = Instruction(self.bus.read(self.pc.value, self.INSTRUCTION_SIZE))
+        data = self.bus.read(self.pc.value, self.COMPRESSED_INSTRUCTION_SIZE)
+        match data & 0b11:
+            case 0b11:
+                self.instruction = Instruction(self.bus.read(self.pc.value, self.INSTRUCTION_SIZE))
+            case 0b01:
+                self.instruction = CompressedInstruction(data)
         return self.instruction
 
     def rd(self, value):

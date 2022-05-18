@@ -274,22 +274,31 @@ def get_asm(instruction, use_symbol=False, pc=0):
     return mnemonic_sec
 
 def info(instruction):
-    return indent('\n'.join([
-        f'0x{instruction.value:08x}',
-        instruction.type.name,
-        instruction.opcode_type.name,
-        'opcode\t:' + h_opcode(instruction) + '\t' + f'0x{instruction.opcode:02x}',
-        'rd\t:' + h_rd(instruction) + '\t' + regx(instruction.rd) + '\t' + regc(instruction.rd),
-        'funct3\t:' + h_funct3(instruction) + '\t' + f'0x{instruction.funct3:1x}',
-        'rs1\t:' + h_rs1(instruction) + '\t' + regx(instruction.rs1) + '\t' + regc(instruction.rs1),
-        'rs2\t:' + h_rs2(instruction) + '\t' + regx(instruction.rs2) + '\t' + regc(instruction.rs2),
-        'funct7\t:' + h_funct7(instruction) + '\t' + f'0x{instruction.funct7:02x}',
-        'I imm\t:' + h_imm_i(instruction) + '\t' + f'{instruction.imm_i}',
-        'S imm\t:' + h_imm_s(instruction) + '\t' + f'{instruction.imm_s}',
-        'B imm\t:' + h_imm_b(instruction) + '\t' + f'{instruction.imm_b}',
-        'U imm\t:' + h_imm_u(instruction) + '\t' + f'{instruction.imm_u}',
-        'J imm\t:' + h_imm_j(instruction) + '\t' + f'{instruction.imm_j}',
-    ]), '\t')
+    match instruction.opcode & 0b11:
+        case 0b11:
+            return indent('\n'.join([
+                f'0x{instruction.value:08x}',
+                instruction.type.name,
+                instruction.opcode_type.name,
+                'opcode\t:' + h_opcode(instruction) + '\t' + f'0x{instruction.opcode:02x}',
+                'rd\t:' + h_rd(instruction) + '\t' + regx(instruction.rd) + '\t' + regc(instruction.rd),
+                'funct3\t:' + h_funct3(instruction) + '\t' + f'0x{instruction.funct3:1x}',
+                'rs1\t:' + h_rs1(instruction) + '\t' + regx(instruction.rs1) + '\t' + regc(instruction.rs1),
+                'rs2\t:' + h_rs2(instruction) + '\t' + regx(instruction.rs2) + '\t' + regc(instruction.rs2),
+                'funct7\t:' + h_funct7(instruction) + '\t' + f'0x{instruction.funct7:02x}',
+                'I imm\t:' + h_imm_i(instruction) + '\t' + f'{instruction.imm_i}',
+                'S imm\t:' + h_imm_s(instruction) + '\t' + f'{instruction.imm_s}',
+                'B imm\t:' + h_imm_b(instruction) + '\t' + f'{instruction.imm_b}',
+                'U imm\t:' + h_imm_u(instruction) + '\t' + f'{instruction.imm_u}',
+                'J imm\t:' + h_imm_j(instruction) + '\t' + f'{instruction.imm_j}',
+            ]), '\t')
+        case 0b01:
+            return indent('\n'.join([
+                f'0x{instruction.value:08x}'
+            ]), '\t')
+        case _:
+            return 'unsupported instruction'
+        
 
 class Instruction:
 
@@ -360,6 +369,29 @@ class Instruction:
     @property
     def csr(self):
         return csr(self.value)
+
+    @property
+    def asm(self):
+        return get_asm(self, use_symbol=USE_SYMBOL)
+
+    def __str__(self):
+        if VERBOSE:
+            return self.asm + '\n' + info(self)
+        return self.asm
+
+
+class CompressedInstruction:
+    
+    def __init__(self, value):
+        self.value = u16(value)
+
+    @property
+    def opcode(self):
+        return opcode(self.value)
+
+    @property
+    def rd(self):
+        return rd(self.value)
 
     @property
     def asm(self):
