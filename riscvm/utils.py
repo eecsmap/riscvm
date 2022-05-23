@@ -25,6 +25,7 @@ def _i(value, npower):
         return positive - npower
     return positive
 
+i6 = partial(_i, npower=1<<6)
 i8 = partial(_i, npower=1<<7)
 i12 = partial(_i, npower=1<<11)
 i13 = partial(_i, npower=1<<12)
@@ -112,6 +113,15 @@ def signed(value, nbits):
         return positive - mask - 1
     return positive
 
+# rvc
+c_op = partial(section, pos=0, nbits=2)
+c_funct3 = partial(section, pos=13, nbits=3)
+c_rd = partial(section, pos=7, nbits=5)
+c_imm = lambda x: i6(
+    section(x, 12, 1) << 5
+    | section(x, 2, 5))
+
+# rv32/64
 opcode = partial(section, pos=0, nbits=7)
 rd = partial(section, pos=7, nbits=5)
 funct3 = partial(section, pos=12, nbits=3)

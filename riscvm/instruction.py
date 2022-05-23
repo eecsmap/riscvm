@@ -50,67 +50,76 @@ def opcode_type(instruction):
     opcode = instruction.opcode
     row = section(opcode, 5, 2)
     col = section(opcode, 2, 3)
-    tail = section(opcode, 0, 2)
+    head = section(opcode, 0, 2)
+    rvc_funct3 = section(instruction.value, 13, 3)
 
-    if tail != 0b11: return OpCodeType.UNDEFINED
-    
-    match (row, col):
-        case (0b00, 0b000):
-            return OpCodeType.LOAD
-        case (0b00, 0b001):
-            return OpCodeType.LOAD_FP
-        case (0b00, 0b010):
-            return OpCodeType.custom_0
-        case (0b00, 0b011):
-            return OpCodeType.MISC_MEM
-        case (0b00, 0b100):
-            return OpCodeType.OP_IMM
-        case (0b00, 0b101):
-            return OpCodeType.AUIPC
-        case (0b00, 0b110):
-            return OpCodeType.OP_IMM_32
-        case (0b01, 0b000):
-            return OpCodeType.STORE
-        case (0b01, 0b001):
-            return OpCodeType.STORE_FP
-        case (0b01, 0b010):
-            return OpCodeType.custom_1
-        case (0b01, 0b011):
-            return OpCodeType.AMO
-        case (0b01, 0b100):
-            return OpCodeType.OP
-        case (0b01, 0b101):
-            return OpCodeType.LUI
-        case (0b01, 0b110):
-            return OpCodeType.OP_32
-        case (0b10, 0b000):
-            return OpCodeType.MADD
-        case (0b10, 0b001):
-            return OpCodeType.MSUB
-        case (0b10, 0b010):
-            return OpCodeType.NMSUB
-        case (0b10, 0b011):
-            return OpCodeType.NMADD
-        case (0b10, 0b100):
-            return OpCodeType.OP_FP
-        case (0b10, 0b101):
-            return OpCodeType.reserved
-        case (0b10, 0b110):
-            return OpCodeType.custom_2
-        case (0b11, 0b000):
-            return OpCodeType.BRANCH
-        case (0b11, 0b001):
-            return OpCodeType.JALR
-        case (0b11, 0b010):
-            return OpCodeType.reserved
-        case (0b11, 0b011):
-            return OpCodeType.JAL
-        case (0b11, 0b100):
-            return OpCodeType.SYSTEM
-        case (0b11, 0b101):
-            return OpCodeType.reserved
-        case (0b11, 0b110):
-            return OpCodeType.custom_3
+    if head != 0b11:
+        
+        # https://five-embeddev.com/riscv-isa-manual/latest/rvc-opcode-map.html#rvcopcodemap
+        
+        match(head, rvc_funct3):
+            # https://five-embeddev.com/riscv-isa-manual/latest/c.html
+            case (0b01, 0b011):
+                 return OpCodeType.LUI
+
+    if head == 0b11:
+        match (row, col):
+            case (0b00, 0b000):
+                return OpCodeType.LOAD
+            case (0b00, 0b001):
+                return OpCodeType.LOAD_FP
+            case (0b00, 0b010):
+                return OpCodeType.custom_0
+            case (0b00, 0b011):
+                return OpCodeType.MISC_MEM
+            case (0b00, 0b100):
+                return OpCodeType.OP_IMM
+            case (0b00, 0b101):
+                return OpCodeType.AUIPC
+            case (0b00, 0b110):
+                return OpCodeType.OP_IMM_32
+            case (0b01, 0b000):
+                return OpCodeType.STORE
+            case (0b01, 0b001):
+                return OpCodeType.STORE_FP
+            case (0b01, 0b010):
+                return OpCodeType.custom_1
+            case (0b01, 0b011):
+                return OpCodeType.AMO
+            case (0b01, 0b100):
+                return OpCodeType.OP
+            case (0b01, 0b101):
+                return OpCodeType.LUI
+            case (0b01, 0b110):
+                return OpCodeType.OP_32
+            case (0b10, 0b000):
+                return OpCodeType.MADD
+            case (0b10, 0b001):
+                return OpCodeType.MSUB
+            case (0b10, 0b010):
+                return OpCodeType.NMSUB
+            case (0b10, 0b011):
+                return OpCodeType.NMADD
+            case (0b10, 0b100):
+                return OpCodeType.OP_FP
+            case (0b10, 0b101):
+                return OpCodeType.reserved
+            case (0b10, 0b110):
+                return OpCodeType.custom_2
+            case (0b11, 0b000):
+                return OpCodeType.BRANCH
+            case (0b11, 0b001):
+                return OpCodeType.JALR
+            case (0b11, 0b010):
+                return OpCodeType.reserved
+            case (0b11, 0b011):
+                return OpCodeType.JAL
+            case (0b11, 0b100):
+                return OpCodeType.SYSTEM
+            case (0b11, 0b101):
+                return OpCodeType.reserved
+            case (0b11, 0b110):
+                return OpCodeType.custom_3
          
     return OpCodeType.UNDEFINED
 
@@ -128,18 +137,21 @@ class InstructionType(Enum):
 
 
 def get_type(instruction):
-    return {
-        0b000_0011: InstructionType.I,
-        0b001_0011: InstructionType.I,
-        0b001_0111: InstructionType.U,
-        0b001_1011: InstructionType.I,
-        0b010_0011: InstructionType.S,
-        0b011_0011: InstructionType.R,
-        0b011_0111: InstructionType.U,
-        0b110_0011: InstructionType.B,
-        0b110_0111: InstructionType.I,
-        0b110_1111: InstructionType.J,
-    }.get(instruction.opcode, InstructionType.UNDEFINED)
+    if isinstance(instruction, Instruction):
+        return {
+            0b000_0011: InstructionType.I,
+            0b001_0011: InstructionType.I,
+            0b001_0111: InstructionType.U,
+            0b001_1011: InstructionType.I,
+            0b010_0011: InstructionType.S,
+            0b011_0011: InstructionType.R,
+            0b011_0111: InstructionType.U,
+            0b110_0011: InstructionType.B,
+            0b110_0111: InstructionType.I,
+            0b110_1111: InstructionType.J,
+        }.get(instruction.opcode, InstructionType.UNDEFINED)
+    if isinstance(instruction, CompressedInstruction):
+        return InstructionType.UNDEFINED
 
 def h(content):
     '''hightlight content'''
@@ -302,6 +314,8 @@ def info(instruction):
 
 class Instruction:
 
+    size = 4
+
     def __init__(self, value):
         self.value = u32(value)
 
@@ -381,9 +395,25 @@ class Instruction:
 
 
 class CompressedInstruction:
-    
+    '''
+    RVC uses a simple compression scheme that offers shorter 16-bit
+    versions of common 32-bit RISC-V instructions when:
+
+    1. the immediate or address offset is small.
+    2. one of the registers is the zero register (x0),
+       the ABI link register (x1), or the ABI stack pointer ( x2).
+    3. the destination register and the first source register are identical.
+    4. the registers used are the 8 most popular ones.
+    '''
+
+    size = 2
+
     def __init__(self, value):
         self.value = u16(value)
+
+    @property
+    def type(self):
+        return get_type(self)
 
     @property
     def opcode(self):
@@ -391,7 +421,15 @@ class CompressedInstruction:
 
     @property
     def rd(self):
-        return rd(self.value)
+        return c_rd(self.value)
+
+    @property
+    def c_imm(self):
+        return c_imm(self.value)
+
+    @property
+    def nzimm(self):
+        return c_imm(self.value) << 12
 
     @property
     def asm(self):

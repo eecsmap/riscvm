@@ -22,6 +22,7 @@ class CPU:
     INSTRUCTION_SIZE = 4
 
     def __init__(self, bus):
+        self.instrustion = None
         self.registers = [Register(0, f'x{i}') for i in range(32)]
         self.registers[0] = FixedRegister(0, 'x0')
         self.pc = Register() #0x8000_0000)
@@ -31,11 +32,14 @@ class CPU:
     
     def fetch(self):
         data = self.bus.read(self.pc.value, self.COMPRESSED_INSTRUCTION_SIZE)
+
         match data & 0b11:
             case 0b11:
                 self.instruction = Instruction(self.bus.read(self.pc.value, self.INSTRUCTION_SIZE))
             case 0b01:
                 self.instruction = CompressedInstruction(data)
+            case _:
+                error('invalid instruction')
         return self.instruction
 
     def rd(self, value):
@@ -153,6 +157,10 @@ class CPU:
                 self.rd(old_value)
             case Mnemonic.FENCE:
                 pass
+            case Mnemonic.C_LUI:
+                assert instruction.nzimm != 0
+                assert instruction.rd not in {0, 2}
+                self.rd(instruction.nzimm)
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:
@@ -160,4 +168,4 @@ class CPU:
         elif jumping:
             self.pc.value = pc_new
         else:
-            self.pc.value += self.INSTRUCTION_SIZE
+            self.pc.value += instruction.size
