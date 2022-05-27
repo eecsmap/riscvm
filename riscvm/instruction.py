@@ -452,6 +452,14 @@ class CompressedInstruction:
         return c_uimm(self.value)
 
     @property
+    def nzuimm_w(self):
+        return c_nzuimm_w(self.value)
+
+    @property
+    def rd_prime(self):
+        return c_rd_prime(self.value)
+
+    @property
     def asm(self):
         return get_asm(self, use_symbol=USE_SYMBOL)
 

@@ -36,7 +36,7 @@ class CPU:
         match data & 0b11:
             case 0b11:
                 self.instruction = Instruction(self.bus.read(self.pc.value, self.INSTRUCTION_SIZE))
-            case 0b01 | 0b10:
+            case 0b00 | 0b01 | 0b10:
                 self.instruction = CompressedInstruction(data)
             case _:
                 error(f'invalid instruction 0x{data:08x} @0x{self.pc.value:016x}')
@@ -171,6 +171,11 @@ class CPU:
                 self.rd(self.registers[instruction.rd].value + self.registers[instruction.rs2].value)
             case Mnemonic.C_SDSP:
                 self.bus.write(self.registers[2].value + instruction.uimm, 8, self.registers[instruction.rs2].value)
+
+
+            case Mnemonic.C_ADDI4SPN:
+                assert instruction.nzuimm_w != 0
+                self.registers[instruction.rd_prime].value = self.registers[2].value + 4 * instruction.nzuimm_w
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:

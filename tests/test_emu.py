@@ -8,12 +8,6 @@ from pytest import raises
 # 2. tests run faster without reading test programs from files.
 # Refer to project README to get instructions on how to build test programs.
 
-def test_code_with_invalid_instruction():
-    code = unhexlify('00000000')
-    emulator = Emulator(code)
-    with raises(InternalException, match='invalid instruction'):
-        emulator.run(1)
-
 def test_fib():
     code = unhexlify('9307f5ff6354a00213071000930600001306f0ff130507009387f7ff3307d70093060500e398c7fe678000001305000067800000')
     load_address = 0x1000 # load code to first page; this is just a demo with arbitrary value
