@@ -122,7 +122,7 @@ class Mnemonic(Enum):
     def __str__(self):
         return f'{self.name}'.replace('_', '.')
 
-MNEMONICS = {
+MNEMONICS_RVC64 = {
     # rv32c/64c
     0b00: {
         # C.ADDI4SPN
@@ -138,6 +138,10 @@ MNEMONICS = {
         0b1110: Mnemonic.C_SDSP,
         0b1111: Mnemonic.C_SDSP,
     },
+}
+
+MNEMONICS = {
+
     # rv32/64
     0b00_000_11: {
         0b000: Mnemonic.LB,
@@ -322,7 +326,7 @@ def get_matchers(instruction):
         return (c_op, c_funct4)
 
 def get_mnemonic(instruction):
-    value = MNEMONICS
+    value = MNEMONICS_RVC64 if instruction.is_compressed else MNEMONICS
     levels = get_matchers(instruction)
     for level in levels:
         value = value.get(level(instruction.value), Mnemonic.UNDEFINED)

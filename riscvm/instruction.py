@@ -324,6 +324,8 @@ class Instruction:
 
     size = 4
 
+    is_compressed = False
+
     def __init__(self, value):
         self.value = u32(value)
 
@@ -415,6 +417,8 @@ class CompressedInstruction:
     '''
 
     size = 2
+
+    is_compressed = True
 
     def __init__(self, value):
         self.value = u16(value)
