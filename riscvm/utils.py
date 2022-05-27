@@ -126,6 +126,13 @@ c_uimm = lambda x: (
     section(x, 10, 3) << 3
     | section(x, 7, 3) << 6
 )
+c_rd_prime = partial(section, pos=2, nbits=3)
+c_nzuimm_w = lambda x: (
+    section(x, 5, 1) << 3
+    | section(x, 6, 1) << 2
+    | section(x, 7, 4) << 6
+    | section(x, 11, 2) << 4
+)
 # rv32/64
 opcode = partial(section, pos=0, nbits=7)
 rd = partial(section, pos=7, nbits=5)

@@ -91,7 +91,7 @@ class Emulator:
             self.cpu.execute()
             for reg in self.cpu.registers:
                 pass
-                logger.info(reg)
+                #logger.info(reg)
             count += 1
             #if count == 90: break # before calling consoleinit()
             #if count == 440: break # checking .con

@@ -117,12 +117,18 @@ class Mnemonic(Enum):
     C_ADDI = auto()
     C_ADD = auto()
     C_SDSP = auto()
+    C_ADDI4SPN = auto()
 
     def __str__(self):
         return f'{self.name}'.replace('_', '.')
 
 MNEMONICS = {
     # rv32c/64c
+    0b00: {
+        # C.ADDI4SPN
+        # CIW: wide immediate
+        0b000: Mnemonic.C_ADDI4SPN,
+    },
     0b01: {
         0b011: Mnemonic.C_LUI,
         0b000: Mnemonic.C_ADDI,
@@ -310,7 +316,7 @@ def get_matchers(instruction):
         if instruction.opcode == 0b0101111:
             return (opcode, funct3, atomic)
         return (opcode, funct3, funct7, rs2)
-    if instruction.opcode & 0b11 == 0b01:
+    if instruction.opcode & 0b11 in [0b00, 0b01]:
         return (c_op, c_funct3)
     if instruction.opcode & 0b11 == 0b10:
         return (c_op, c_funct4)
