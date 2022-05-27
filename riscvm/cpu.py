@@ -36,10 +36,10 @@ class CPU:
         match data & 0b11:
             case 0b11:
                 self.instruction = Instruction(self.bus.read(self.pc.value, self.INSTRUCTION_SIZE))
-            case 0b01:
+            case 0b01 | 0b10:
                 self.instruction = CompressedInstruction(data)
             case _:
-                error('invalid instruction')
+                error(f'invalid instruction 0x{data:08x} @0x{self.pc.value:016x}')
         return self.instruction
 
     def rd(self, value):
@@ -160,7 +160,17 @@ class CPU:
             case Mnemonic.C_LUI:
                 assert instruction.nzimm != 0
                 assert instruction.rd not in {0, 2}
-                self.rd(instruction.nzimm)
+                self.rd(instruction.nzimm << 12)
+            case Mnemonic.C_ADDI:
+                assert instruction.nzimm != 0
+                assert instruction.rd != 0
+                self.rd(self.registers[instruction.rd].value + instruction.nzimm)
+            case Mnemonic.C_ADD:
+                assert instruction.rd != 0
+                assert instruction.rs2 != 0
+                self.rd(self.registers[instruction.rd].value + self.registers[instruction.rs2].value)
+            case Mnemonic.C_SDSP:
+                self.bus.write(self.registers[2].value + instruction.uimm, 8, self.registers[instruction.rs2].value)
             case _:
                 error(f'invalid instruction: {instruction}')
         if branching:

@@ -114,6 +114,9 @@ class Mnemonic(Enum):
     MRET = auto()
     # Compressed
     C_LUI = auto()
+    C_ADDI = auto()
+    C_ADD = auto()
+    C_SDSP = auto()
 
     def __str__(self):
         return f'{self.name}'.replace('_', '.')
@@ -122,6 +125,12 @@ MNEMONICS = {
     # rv32c/64c
     0b01: {
         0b011: Mnemonic.C_LUI,
+        0b000: Mnemonic.C_ADDI,
+    },
+    0b10: {
+        0b1001: Mnemonic.C_ADD,
+        0b1110: Mnemonic.C_SDSP,
+        0b1111: Mnemonic.C_SDSP,
     },
     # rv32/64
     0b00_000_11: {
@@ -291,7 +300,7 @@ MNEMONICS = {
 }
 
 
-from .utils import opcode, funct3, funct7, atomic, rs2, c_op, c_funct3
+from .utils import opcode, funct3, funct7, atomic, rs2, c_op, c_funct3, c_funct4
 
 def get_matchers(instruction):
     '''
@@ -301,8 +310,10 @@ def get_matchers(instruction):
         if instruction.opcode == 0b0101111:
             return (opcode, funct3, atomic)
         return (opcode, funct3, funct7, rs2)
-    if instruction.opcode & 0b01:
+    if instruction.opcode & 0b11 == 0b01:
         return (c_op, c_funct3)
+    if instruction.opcode & 0b11 == 0b10:
+        return (c_op, c_funct4)
 
 def get_mnemonic(instruction):
     value = MNEMONICS

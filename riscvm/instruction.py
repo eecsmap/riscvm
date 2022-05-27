@@ -60,7 +60,9 @@ def opcode_type(instruction):
         match(head, rvc_funct3):
             # https://five-embeddev.com/riscv-isa-manual/latest/c.html
             case (0b01, 0b011):
-                 return OpCodeType.LUI
+                return OpCodeType.LUI
+            case (0b01, 0b000):
+                return OpCodeType.ADDI
 
     if head == 0b11:
         match (row, col):
@@ -283,6 +285,12 @@ def get_asm(instruction, use_symbol=False, pc=0):
             f'{csr_name(instruction.csr)}',
             f'{reg(instruction.rs1)}'
         ])
+    if mnemonic is Mnemonic.C_ADDI:
+        return mnemonic_sec + '\t' + sep.join([
+            f'{reg(instruction.rd)}',
+            f'{reg(instruction.rs1)}',
+            f'{instruction.c_imm}'
+        ])
     return mnemonic_sec
 
 def info(instruction):
@@ -424,12 +432,24 @@ class CompressedInstruction:
         return c_rd(self.value)
 
     @property
+    def rs1(self):
+        return self.rd
+
+    @property
+    def rs2(self):
+        return c_rs2(self.value)
+
+    @property
     def c_imm(self):
         return c_imm(self.value)
 
     @property
     def nzimm(self):
-        return c_imm(self.value) << 12
+        return c_imm(self.value)
+
+    @property
+    def uimm(self):
+        return c_uimm(self.value)
 
     @property
     def asm(self):

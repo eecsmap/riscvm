@@ -76,7 +76,37 @@ class Emulator:
         stack = RAM(0x8000000) # 128MB for bss, stack, etc.
         bus = Bus()
         # hack: xv6 kernel bin assume to have this place as stack
-        stack_begin = 0xb000
+        stack_begin = ((len(ram) + 0x1000 - 1) >> 12 << 12) + address
+        bus = Bus().add_device(ram, (address, len(ram))).add_device(stack, (stack_begin, len(stack)))
+        self.cpu = CPU(bus)
+        self.cpu.pc.value = address
+
+
+    def run(self, limit=0):
+        count = 0
+        while self.cpu.fetch():
+            #if count % 100000 == 0:
+            print(f'[{count:-5}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
+            #logger.debug(info(self.cpu.instruction))
+            self.cpu.execute()
+            for reg in self.cpu.registers:
+                pass
+                logger.info(reg)
+            count += 1
+            #if count == 90: break # before calling consoleinit()
+            #if count == 440: break # checking .con
+            if (limit and count == limit):
+                break
+
+class XV6(Emulator):
+
+    def __init__(self, program, uart_output_file=None, address=0):
+        ram = RAM()
+        ram.data = bytearray(program)
+        stack = RAM(0x8000000) # 128MB for bss, stack, etc.
+        bus = Bus()
+        # hack: xv6 kernel bin assume to have this place as stack
+        stack_begin = ((len(ram) + 0x1000 - 1) >> 12 << 12) + address
         bus = Bus().add_device(ram, (address, len(ram))).add_device(stack, (stack_begin, len(stack)))
         self.cpu = CPU(bus)
         self.cpu.pc.value = address
@@ -89,22 +119,6 @@ class Emulator:
         UART_SIZE = 0x100
         bus.add_device(UART(UART_SIZE, uart_output_file), (UART_BASE, UART_SIZE))
 
-    def run(self, limit=0):
-        count = 0
-        while self.cpu.fetch():
-            #if count % 100000 == 0:
-            print(f'[{count:-5}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
-            #logger.debug(info(self.cpu.instruction))
-            self.cpu.execute()
-            for reg in self.cpu.registers:
-                pass
-                #logger.debug(reg)
-            count += 1
-            #if count == 90: break # before calling consoleinit()
-            #if count == 440: break # checking .con
-            if (limit and count == limit):
-                break
-
 if __name__ == '__main__':
     import sys
     parser = argparse.ArgumentParser()
@@ -112,5 +126,8 @@ if __name__ == '__main__':
     parser.add_argument('file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin.buffer)
     parser.add_argument('uart_output', nargs='?', type=argparse.FileType('wb'), default=sys.stdout.buffer)
     args = parser.parse_args()
-    data = args.file.read()
-    Emulator(data, args.uart_output, address=args.address).run()
+    #data = args.file.read()
+    import mmap
+    mm = mmap.mmap(args.file.fileno(), 0, flags=mmap.MAP_PRIVATE)
+    data = bytearray(mm)
+    XV6(data, args.uart_output, address=args.address).run()
