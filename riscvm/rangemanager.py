@@ -23,17 +23,19 @@ class RangeManger:
 
         position = bisect_left(self.starts, address)
         if position == len(self.starts):
+            if position > 0 and self.starts[-1] + self.sizes[-1] > address:
+                error(f'range {range} cannot fit in {self}')
             self.starts.append(address)
             self.sizes.append(size)
             return
 
         assert position != len(self.starts)
         if self.starts[position] == address:
-            error(f'range {range} cannot fit in')
+            error(f'range {range} cannot fit in {self}')
         
         assert self.starts[position] > address
         if address + size > self.starts[position]:
-            error(f'range {range} cannot fit in')
+            error(f'range {range} cannot fit in {self}')
     
         self.starts.insert(position, address)
         self.sizes.insert(position, size)
@@ -58,7 +60,13 @@ class RangeManger:
         if address + size <= target_start + target_size:
             return (target_start, target_size)
         error(f'no device mapped to cover (0x{address:x}, 0x{address+size:x})')
-        
+
+    def __str__(self):
+        s = ''    
+        for start, size in zip(self.starts, self.sizes):
+            s += (f'[{start:x} - {start + size:x})')
+        return s
+
 def test_rangemanger():
     range_manger = RangeManger()
     range_manger.add_range((-1, 1))
