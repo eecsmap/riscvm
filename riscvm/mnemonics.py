@@ -330,6 +330,8 @@ def get_mnemonic(instruction):
     levels = get_matchers(instruction)
     for level in levels:
         value = value.get(level(instruction.value), Mnemonic.UNDEFINED)
+        if callable(value):
+            return value(instruction)
         if not isinstance(value, dict):
             return value
     return Mnemonic.UNDEFINED

@@ -86,7 +86,7 @@ class Emulator:
         count = 0
         while self.cpu.fetch():
             #if count % 100000 == 0:
-            print(f'[{count:-5}] {self.cpu.pc.value:016X}: ({self.cpu.instruction.value:08X}) {get_asm(self.cpu.instruction, use_symbol=True, pc=self.cpu.pc.value)}')
+            print(f'[{count:-5}] {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm}')#, use_symbol=True, pc=self.cpu.pc.value)}')
             #logger.debug(info(self.cpu.instruction))
             self.cpu.execute()
             for reg in self.cpu.registers:
