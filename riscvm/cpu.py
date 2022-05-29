@@ -169,28 +169,6 @@ class CPU:
                     self.rd(old_value)
                 case Mnemonic.FENCE:
                     pass
-
-
-
-                case Mnemonic.C_LUI:
-                    assert instruction.nzimm != 0
-                    assert instruction.rd not in {0, 2}
-                    self.rd(instruction.nzimm << 12)
-                case Mnemonic.C_ADDI:
-                    assert instruction.nzimm != 0
-                    assert instruction.rd != 0
-                    self.rd(self.registers[instruction.rd].value + instruction.nzimm)
-                case Mnemonic.C_ADD:
-                    assert instruction.rd != 0
-                    assert instruction.rs2 != 0
-                    self.rd(self.registers[instruction.rd].value + self.registers[instruction.rs2].value)
-                case Mnemonic.C_SDSP:
-                    self.bus.write(self.registers[2].value + instruction.uimm, 8, self.registers[instruction.rs2].value)
-
-
-                case Mnemonic.C_ADDI4SPN:
-                    assert instruction.nzuimm_w != 0
-                    self.registers[instruction.rd_prime].value = self.registers[2].value + 4 * instruction.nzuimm_w
                 case _:
                     error(f'invalid instruction: {instruction}')
             if branching:

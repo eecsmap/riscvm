@@ -285,12 +285,6 @@ def get_asm(instruction, use_symbol=False, pc=0):
             f'{csr_name(instruction.csr)}',
             f'{reg(instruction.rs1)}'
         ])
-    if mnemonic is Mnemonic.C_ADDI:
-        return mnemonic_sec + '\t' + sep.join([
-            f'{reg(instruction.rd)}',
-            f'{reg(instruction.rs1)}',
-            f'{instruction.c_imm}'
-        ])
     return mnemonic_sec
 
 def info(instruction):
@@ -311,10 +305,6 @@ def info(instruction):
                 'B imm\t:' + h_imm_b(instruction) + '\t' + f'{instruction.imm_b}',
                 'U imm\t:' + h_imm_u(instruction) + '\t' + f'{instruction.imm_u}',
                 'J imm\t:' + h_imm_j(instruction) + '\t' + f'{instruction.imm_j}',
-            ]), '\t')
-        case 0b01:
-            return indent('\n'.join([
-                f'0x{instruction.value:08x}'
             ]), '\t')
         case _:
             return 'unsupported instruction'
@@ -393,75 +383,6 @@ class Instruction:
     @property
     def csr(self):
         return csr(self.value)
-
-    @property
-    def asm(self):
-        return get_asm(self, use_symbol=USE_SYMBOL)
-
-    def __str__(self):
-        if VERBOSE:
-            return self.asm + '\n' + info(self)
-        return self.asm
-
-
-class CompressedInstruction:
-    '''
-    RVC uses a simple compression scheme that offers shorter 16-bit
-    versions of common 32-bit RISC-V instructions when:
-
-    1. the immediate or address offset is small.
-    2. one of the registers is the zero register (x0),
-       the ABI link register (x1), or the ABI stack pointer ( x2).
-    3. the destination register and the first source register are identical.
-    4. the registers used are the 8 most popular ones.
-    '''
-
-    size = 2
-
-    is_compressed = True
-
-    def __init__(self, value):
-        self.value = u16(value)
-
-    @property
-    def type(self):
-        return get_type(self)
-
-    @property
-    def opcode(self):
-        return opcode(self.value)
-
-    @property
-    def rd(self):
-        return c_rd(self.value)
-
-    @property
-    def rs1(self):
-        return self.rd
-
-    @property
-    def rs2(self):
-        return c_rs2(self.value)
-
-    @property
-    def c_imm(self):
-        return c_imm(self.value)
-
-    @property
-    def nzimm(self):
-        return c_imm(self.value)
-
-    @property
-    def uimm(self):
-        return c_uimm(self.value)
-
-    @property
-    def nzuimm_w(self):
-        return c_nzuimm_w(self.value)
-
-    @property
-    def rd_prime(self):
-        return c_rd_prime(self.value)
 
     @property
     def asm(self):
