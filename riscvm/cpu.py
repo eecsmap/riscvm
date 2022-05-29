@@ -1,12 +1,12 @@
 from enum import Enum
 from riscvm import Register
-from riscvm.instruction import Instruction #, CompressedInstruction
+from riscvm.instruction import Instruction
 from riscvm import error
 from riscvm.mnemonics import Mnemonic
 from riscvm.register import FixedRegister
 from riscvm.utils import i8, i16, i32, i64, u8, u16, u32, u64, todo
 from .instruction import get_mnemonic
-from .rvc64 import actor as rvc64_actor, Instruction as CompressedInstruction
+from .rv64c import actor as rv64c_actor, Instruction as CompressedInstruction
 import logging
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class CSR(Enum):
 def get_handler(instruction_value):
     match instruction_value & 0b11:
         case 0b00 | 0b01 | 0b10:
-            return rvc64_actor
+            return rv64c_actor
     return None
 
 class CPU:
