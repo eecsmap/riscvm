@@ -1,4 +1,5 @@
-from riscvm.instruction import Instruction
+from riscvm.rv64c import Instruction as RV64C_Instruction
+from riscvm.rv64i import Instruction as RV64I_Instruction
 
 if __name__ == '__main__':
     import argparse
@@ -8,5 +9,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     for line in args.file:
         if line:
-            value = int(line.strip(), 16)
-            print(Instruction(value))
+            data = int(line.strip(), 16)
+            Instruction = RV64I_Instruction if data & 0b11 == 0b11 else RV64C_Instruction
+            print(Instruction(data))

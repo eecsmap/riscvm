@@ -61,7 +61,7 @@ logging.config.dictConfig(LOGGING_CONFIG)
 
 from riscvm import CPU
 from riscvm.bus import Bus
-from riscvm.instruction import get_asm, info
+from riscvm.rv64i import get_asm, info
 from riscvm.ram import RAM
 from riscvm.uart import UART
 

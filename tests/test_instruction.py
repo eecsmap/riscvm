@@ -1,4 +1,5 @@
-from riscvm import inst_gen, signed, Instruction
+from riscvm.rv64i import inst_gen, Instruction
+from riscvm.utils import signed
 import pytest
 
 testdata_run = (
