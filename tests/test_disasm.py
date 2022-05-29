@@ -1,6 +1,6 @@
 import struct
 
-from riscvm.instruction import Instruction, get_asm, info
+from riscvm.rv64i import Instruction, get_asm, info
 
 data = bytes.fromhex('9307f5ff6354a00213071000930600001306f0ff130507009387f7ff3307d70093060500e398c7fe678000001305000067800000')
 

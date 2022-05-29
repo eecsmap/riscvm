@@ -8,7 +8,7 @@ An emulator of RISC-V machine.
 from .exception import error
 from .utils import *
 from .mport import gen
-from .instruction import Instruction, get_asm, inst_gen, signed
+from .rv64i import Instruction
 from .register import Register
 from .ram import RAM, create_ram
 from .bus import Bus

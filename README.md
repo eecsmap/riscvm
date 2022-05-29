@@ -67,3 +67,12 @@ objcopy -O binary fib.o fib.bin
 2. add test accordingly into tests/test_isa.py, you might find output from step 1 useful in creating tests.
 3. run `make test` to run tests.
 4. add implementation to pass tests.
+
+## examples of toolss
+```
+python tools/as.py
+mv a0, a1
+
+python tools/as.py --dis
+852e
+```

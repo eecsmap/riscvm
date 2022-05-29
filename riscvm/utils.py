@@ -10,6 +10,14 @@ logger = logging.getLogger(__name__)
 # since no shifting on the fly.
 # ===========================================================================
 
+def regc(reg_index):
+    return (
+        'zero', 'ra', 'sp', 'gp', 'tp', 't0', 't1', 't2',
+        's0', 's1', 'a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
+        's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11',
+        't3', 't4', 't5', 't6'
+    )[reg_index]
+
 def _u(value, nbits_mask):
     return value & nbits_mask
 
@@ -117,78 +125,14 @@ def signed(value, nbits):
         return positive - mask - 1
     return positive
 
-# rvc: compressed instruction helpers
-c_op = partial(section, pos=0, nbits=2)
-c_funct3 = partial(section, pos=13, nbits=3)
-c_funct4 = partial(section, pos=12, nbits=4)
-c_rd = partial(section, pos=7, nbits=5)
-c_rs2 = partial(section, pos=2, nbits=5)
-c_imm = lambda x: i6(
-    section(x, 12, 1) << 5
-    | section(x, 2, 5))
-c_uimm = lambda x: (
-    section(x, 10, 3) << 3
-    | section(x, 7, 3) << 6
-)
-c_rd_prime = partial(section, pos=2, nbits=3)
-c_nzuimm_w = lambda x: (
-    section(x, 5, 1) << 3
-    | section(x, 6, 1) << 2
-    | section(x, 7, 4) << 6
-    | section(x, 11, 2) << 4
-)
-# rv32/64
-opcode = partial(section, pos=0, nbits=7)
-rd = partial(section, pos=7, nbits=5)
-funct3 = partial(section, pos=12, nbits=3)
-rs1 = partial(section, pos=15, nbits=5)
-rs2 = partial(section, pos=20, nbits=5)
-funct7 = partial(section, pos=25, nbits=7)
-imm_i = lambda x: i12(funct7(x) << 5 | rs2(x))
-imm_s = lambda x: i12(funct7(x) << 5 | rd(x))
-imm_b = lambda x: i13(
-    section(x, 31, 1) << 12
-    | section(x, 7, 1) << 11
-    | section(x, 25, 6) << 5
-    | section(x, 8, 4) << 1)
-imm_u = lambda x: i32(section(x, 12, 20) << 12)
-imm_j = lambda x: i21(
-    section(x, 31, 1) << 20
-    | section(x, 12, 8) << 12
-    | section(x, 20, 1) << 11
-    | section(x, 21, 10) << 1)
-shamt = partial(section, pos=20, nbits=6) # RV64
-atomic = lambda x: funct7(x) >> 2
-csr = partial(section, pos=20, nbits=12)
-
-def _test_sections():
-    '''
-    >>> opcode(0b0000110)
-    6
-    >>> rd(0b00100_0000000)
-    4
-    >>> funct3(0b011_00000_0000000)
-    3
-    >>> rs1(0b00001_000_00000_0000000)
-    1
-    >>> rs2(0b00010_00001_000_00000_0000000)
-    2
-    >>> funct7(0b0000101_00010_00001_000_00000_0000000)
-    5
-    >>> imm_i(0b0000001_00001_00000_000_00000_0000000)
-    33
-    >>> imm_i(0b1000000_00001_00000_000_00000_0000000)
-    -2047
-    >>> imm_s(0b1000000_00000_00000_000_00011_0000000)
-    -2045
-    >>> imm_b(0b1000000_00000_00000_000_00010_0000000)
-    -4094
-    >>> imm_b(0b0000000_00001_00000_000_00011_0000000)
-    2050
-    >>> imm_u(0b1000000_00000_00000_001_00000_0000000)
-    -2147479552
-    >>> imm_j(0b1111111_11111_11111_111_00000_0000000)
-    -2
-    >>> imm_j(0b0000000_00011_00000_000_00000_0000000)
-    2050
-    '''
+def lookup_mnemonic(instruction, matcher, mnemonics, default):
+    value = mnemonics
+    levels = matcher
+    for level in levels:
+        value = value.get(level(instruction.value), default)
+        if callable(value):
+            return value(instruction)
+        if not isinstance(value, dict):
+            return value
+    return default
+    

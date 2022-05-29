@@ -17,9 +17,8 @@
 
 from enum import Enum, auto
 from functools import partial
-from .utils import section, u16, i6, i32, i
-from .instruction import regc
-from .exception import error
+from riscvm.exception import error
+from riscvm.utils import section, u16, i6, i32, i, regc, lookup_mnemonic
 
 # we are based on rv64
 BASE_ISA = 'RV64'
@@ -309,7 +308,7 @@ class Instruction:
         return get_asm(self, pc)
 
     def __str__(self):
-        return self.asm
+        return self.asm()
 
 def get_matchers(instruction):
     '''
@@ -321,15 +320,7 @@ def get_matchers(instruction):
         return (op, funct3, bit12)
 
 def get_mnemonic(instruction):
-    value = MNEMONICS
-    levels = get_matchers(instruction)
-    for level in levels:
-        value = value.get(level(instruction.value), Mnemonic.UNDEFINED)
-        if callable(value):
-            return value(instruction)
-        if not isinstance(value, dict):
-            return value
-    return Mnemonic.UNDEFINED
+    return lookup_mnemonic(instruction, get_matchers(instruction), MNEMONICS, Mnemonic.UNDEFINED)
 
 def get_asm(instruction, pc=0):
     mnemonic = get_mnemonic(instruction)
