@@ -16,6 +16,9 @@ class RAM:
         return len(self.data)
 
     def read(self, address, size):
+        '''
+        values are all read as unsigned
+        '''
         if size == 1:
             return self.data[address] & 0xff
         if size == 2:

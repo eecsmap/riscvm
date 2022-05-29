@@ -25,8 +25,12 @@ def _i(value, npower):
         return positive - npower
     return positive
 
+def i(n):
+    return partial(_i, npower=1<<n-1)
+
 i6 = partial(_i, npower=1<<5)
 i8 = partial(_i, npower=1<<7)
+i9 = partial(_i, npower=1<<8)
 i12 = partial(_i, npower=1<<11)
 i13 = partial(_i, npower=1<<12)
 i16 = partial(_i, npower=1<<15)

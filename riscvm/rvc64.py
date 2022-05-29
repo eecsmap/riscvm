@@ -17,7 +17,7 @@
 
 from enum import Enum, auto
 from functools import partial
-from .utils import section, u16, i6, i32
+from .utils import section, u16, i6, i32, i
 from .instruction import regc
 from .exception import error
 
@@ -73,6 +73,9 @@ rs1_prime = partial(section, pos=7, nbits=3)
 rs2_prime = partial(section, pos=2, nbits=3)
 bit12 = partial(section, pos=12, nbits=1)
 
+def nz_error():
+    error('unexpected zero immediate value')
+
 offset_8_3 = lambda x: (
     section(x, 10, 3) << 3
     | section(x, 7, 3) << 6
@@ -83,22 +86,55 @@ offset_7_3 = lambda x: (
     | section(x, 5, 2) << 6
 )
 
+offset_8_1 = lambda x: i(9)(
+    section(x, 12, 1) << 8
+    | section(x, 10, 2) << 3
+    | section(x, 5, 2) << 6
+    | section(x, 3, 2) << 1
+    | section(x, 2, 1) << 5
+)
+
+offset_11_1 = lambda x: i(12)(
+    section(x, 12, 1) << 11
+    | section(x, 11, 1) << 4
+    | section(x, 9, 2) << 8
+    | section(x, 8, 1) << 10
+    | section(x, 7, 1) << 6
+    | section(x, 6, 1) << 7
+    | section(x, 3, 3) << 1
+    | section(x, 2, 1) << 5
+)
+
+offset_6_2 = lambda x: (
+    section(x, 10, 3) << 3
+    | section(x, 5, 1) << 6
+    | section(x, 6, 1) << 2
+)
+
 nzuimm_9_2 = lambda x: (
     section(x, 5, 1) << 3
     | section(x, 6, 1) << 2
     | section(x, 7, 4) << 6
     | section(x, 11, 2) << 4
-)
+) or nz_error()
 
 nzimm_5_0 = lambda x: i6(
     section(x, 12, 1) << 5
     | section(x, 2, 5)
-)
+) or nz_error()
 
 nzimm_17_12 = lambda x: i6(
     section(x, 12, 1) << 5
     | section(x, 2, 5)
-)
+) or nz_error()
+
+nzimm_9_4 = lambda x: i(10)(
+    section(x, 12, 1) << 9
+    | section(x, 6, 1) << 4
+    | section(x, 5, 1) << 6
+    | section(x, 3, 2) << 7
+    | section(x, 2, 1) << 5
+) or nz_error()
 
 imm_5_0 = lambda x: i6(
     section(x, 12, 1) << 5
@@ -108,9 +144,10 @@ imm_5_0 = lambda x: i6(
 nzuimm_5_0 = lambda x: (
     section(x, 12, 1) << 5
     | section(x, 2, 5)
-)
+) or nz_error()
 
 shamt = nzuimm_5_0
+
 
 offset_ldsp = lambda x: (
     section(x, 12, 1) << 5
@@ -146,6 +183,14 @@ class Mnemonic(Enum):
     JR = auto()
     ADDIW = auto()
     MV = auto()
+    BEQZ = auto()
+    SW = auto()
+    ADDI16SP = auto()
+    ANDI = auto()
+    LW = auto()
+    J = auto()
+    BNEZ = auto()
+    LD = auto()
 
     def __str__(self):
         return f'C.{self.name}'.lower()
@@ -153,11 +198,16 @@ class Mnemonic(Enum):
 MNEMONICS = {
     0b00: {
         0b000: Mnemonic.ADDI4SPN,
+        0b010: Mnemonic.LW,
+        0b011: Mnemonic.LD,
+        0b110: Mnemonic.SW,
         0b111: Mnemonic.SD,
     },
     0b01: {
         0b000: Mnemonic.ADDI,
         0b001: Mnemonic.ADDIW,
+        0b010: Mnemonic.LI,
+        0b011: lambda x: Mnemonic.ADDI16SP if rd(x.value) == 2 else Mnemonic.LUI,
         0b100: {
             # funct6
             0b100_011: {
@@ -165,11 +215,14 @@ MNEMONICS = {
                 0b10: Mnemonic.OR,
                 0b11: Mnemonic.AND,
             },
-            0b100_000: Mnemonic.SRLI,
-            0b100_100: Mnemonic.SRLI,
+            0b100_0_00: Mnemonic.SRLI,
+            0b100_1_00: Mnemonic.SRLI,
+            0b100_0_10: Mnemonic.ANDI,
+            0b100_1_10: Mnemonic.ANDI,
         },
-        0b010: Mnemonic.LI,
-        0b011: Mnemonic.LUI,
+        0b101: Mnemonic.J,
+        0b110: Mnemonic.BEQZ,
+        0b111: Mnemonic.BNEZ,
     },
     0b10: {
         0b000: Mnemonic.SLLI,
@@ -235,6 +288,10 @@ class Instruction:
         return nzuimm_9_2(self.value)
 
     @property
+    def nzimm_9_4(self):
+        return nzimm_9_4(self.value)
+
+    @property
     def imm_5_0(self):
         return imm_5_0(self.value)
 
@@ -251,8 +308,20 @@ class Instruction:
         return offset_ldsp(self.value)
 
     @property
-    def asm(self):
-        return get_asm(self)
+    def offset_8_1(self):
+        return offset_8_1(self.value)
+
+    @property
+    def offset_6_2(self):
+        return offset_6_2(self.value)
+
+    @property
+    def offset_11_1(self):
+        return offset_11_1(self.value)
+
+    #@property
+    def asm(self, pc=0):
+        return get_asm(self, pc)
 
     def __str__(self):
         return self.asm
@@ -277,7 +346,7 @@ def get_mnemonic(instruction):
             return value
     return Mnemonic.UNDEFINED
 
-def get_asm(instruction):
+def get_asm(instruction, pc=0):
     mnemonic = get_mnemonic(instruction)
     match mnemonic:
         case Mnemonic.LUI:
@@ -292,7 +361,7 @@ def get_asm(instruction):
         case Mnemonic.SDSP:
             rest = ','.join([regc(instruction.rs2), f'{instruction.offset_8_3}(sp)'])
             return f'{mnemonic}\t{rest}'
-        case Mnemonic.SD:
+        case Mnemonic.SD | Mnemonic.LD:
             rest = ','.join([regc(instruction.rs2_prime), f'{instruction.offset_7_3}({regc(instruction.rs1_prime)})'])
             return f'{mnemonic}\t{rest}'
         case Mnemonic.ADDI4SPN:
@@ -328,6 +397,21 @@ def get_asm(instruction):
         case Mnemonic.MV:
             rest = ','.join([regc(instruction.rs1), regc(instruction.rs2)])
             return f'{mnemonic}\t{rest}'
+        case Mnemonic.BEQZ | Mnemonic.BNEZ:
+            rest = ','.join([regc(instruction.rs1_prime), f'{instruction.offset_8_1 + pc:x}'])
+            return f'{mnemonic}\t{rest}'
+        case Mnemonic.SW | Mnemonic.LW:
+            rest = ','.join([regc(instruction.rs2_prime), f'{instruction.offset_6_2}({regc(instruction.rs1_prime)})'])
+            return f'{mnemonic}\t{rest}'
+        case Mnemonic.ADDI16SP:
+            rest = ','.join([regc(2), regc(2), f'{instruction.nzimm_9_4}'])
+            return f'{mnemonic}\t{rest}'
+        case Mnemonic.ANDI:
+            rest = ','.join([regc(instruction.rs1_prime), regc(instruction.rs1_prime), f'{instruction.imm_5_0}'])
+            return f'{mnemonic}\t{rest}'
+        case Mnemonic.J:
+            rest = f'{instruction.offset_11_1 + pc:x}'
+            return f'{mnemonic}\t{rest}'
 
 def actor(instruction, cpu):
     mnemonic = get_mnemonic(instruction)
@@ -355,14 +439,14 @@ def actor(instruction, cpu):
             cpu.registers[instruction.rs2_prime].value = cpu.registers[2].value + instruction.nzuimm_9_2
         case Mnemonic.AND:
             # and rd_, rd_, rs2_
-            cpu.registers[instruction.rs1_prime].value = cpu.registers[instruction.rs1_prime].value & cpu.registers[instruction.rs2_prime].value
+            cpu.registers[instruction.rs1_prime].value &= cpu.registers[instruction.rs2_prime].value
         case Mnemonic.OR:
             # or rd_, rd_, rs2_
-            cpu.registers[instruction.rs1_prime].value = cpu.registers[instruction.rs1_prime].value | cpu.registers[instruction.rs2_prime].value
+            cpu.registers[instruction.rs1_prime].value |= cpu.registers[instruction.rs2_prime].value
         case Mnemonic.LI:
             # addi rd, x0, imm[5:0]
             assert instruction.rd != 0
-            cpu.registers[instruction.rs2_prime].value += instruction.imm_5_0
+            cpu.registers[instruction.rd].value = instruction.imm_5_0
         case Mnemonic.SRLI:
             # srli rd_, rd_, shamt[5:0]
             assert instruction.shamt != 0
@@ -370,6 +454,9 @@ def actor(instruction, cpu):
         case Mnemonic.SD:
             # sd rs2_, offset[7:3](rs1_)
             cpu.bus.write(cpu.registers[instruction.rs1_prime].value + instruction.offset_7_3, 8, cpu.registers[instruction.rs2_prime].value)
+        case Mnemonic.LD:
+            # ld rs2_, offset[7:3](rs1_)
+            cpu.registers[instruction.rs2_prime].value = cpu.bus.read(cpu.registers[instruction.rs1_prime].value + instruction.offset_7_3, 8)
         case Mnemonic.SLLI:
             # slli rd, rd, shamt[5:0]
             assert instruction.shamt != 0
@@ -392,6 +479,32 @@ def actor(instruction, cpu):
             assert instruction.rs1 != 0
             assert instruction.rs2 != 0
             cpu.registers[instruction.rs1].value = cpu.registers[instruction.rs2].value
+        case Mnemonic.BEQZ:
+            # beq rs1_, x0, offset[8:1]
+            if cpu.registers[instruction.rs1_prime].value == 0:
+                new_pc = cpu.pc.value + instruction.offset_8_1
+        case Mnemonic.SW:
+            # sw rs2_, offset[6:2](rs1_)
+            cpu.bus.write(cpu.registers[instruction.rs1_prime].value + instruction.offset_6_2, 4, cpu.registers[instruction.rs2_prime].value)
+        case Mnemonic.ADDI16SP:
+            # addi x2, x2, nzimm[9:4]
+            assert instruction.rd == 2
+            assert instruction.nzimm_9_4 != 0
+            cpu.registers[2].value += instruction.nzimm_9_4
+        case Mnemonic.ANDI:
+            # andi rd_, rd_, imm[5:0]
+            cpu.registers[instruction.rs1_prime].value &= instruction.imm_5_0
+        case Mnemonic.LW:
+            # lw rd_, offset[6:2](rs1_)
+            # NOTE: I guess we should signed extend it from 32 to 64?
+            cpu.registers[instruction.rs2_prime].value = i32(cpu.bus.read(cpu.registers[instruction.rs1_prime].value + instruction.offset_6_2, 4))
+        case Mnemonic.J:
+            # jal x0, offset[11:1]
+            new_pc = cpu.pc.value + instruction.offset_11_1
+        case Mnemonic.BNEZ:
+            # bne rs1_, x0, offset[8:1]
+            if cpu.registers[instruction.rs1_prime].value != 0:
+                new_pc = cpu.pc.value + instruction.offset_8_1
         case Mnemonic.LWSP:
             # lw rd, offset[7:2](x2)
             assert instruction.rd != 0

@@ -384,8 +384,8 @@ class Instruction:
     def csr(self):
         return csr(self.value)
 
-    @property
-    def asm(self):
+    #@property
+    def asm(self, pc=0):
         return get_asm(self, use_symbol=USE_SYMBOL)
 
     def __str__(self):
