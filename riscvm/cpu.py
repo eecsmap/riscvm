@@ -38,6 +38,8 @@ class CPU:
         self.csrs = {} # hopefully we are not going to use csrs too frequently, otherwise we need an array
     
     def fetch(self):
+        # break at panic
+        if self.pc.value == 0x8000_0582: exit()
         data = self.bus.read(self.pc.value, self.COMPRESSED_INSTRUCTION_SIZE)
 
         match data & 0b11:
