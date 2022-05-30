@@ -3,6 +3,8 @@ from riscvm.exception import error
 from riscvm.register import Register, FixedRegister
 from riscvm.rv64i import Instruction as RV64I_Instruction, actor as rv64i_actor
 from riscvm.rv64c import Instruction as RV64C_Instruction, actor as rv64c_actor
+from riscvm.csr import CSR
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,9 @@ class CPU:
         self.pc = Register()
         self.sp = self.registers[2]
         self.bus = bus
-        self.csrs = {} # hopefully we are not going to use csrs too frequently, otherwise we need an array
+        self.csrs = {
+            CSR.MSTATUS.value : 0xa00000000,
+        } # hopefully we are not going to use csrs too frequently, otherwise we need an array
 
     def fetch(self):
         data = self.bus.read(self.pc.value, self.RV64C_SIZE)
