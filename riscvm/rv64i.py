@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 VERBOSE = True
 USE_SYMBOL = True
 
+from riscvm.csr import CSR
 from riscvm.utils import lookup_mnemonic, i, i8, i16, i32, i64, u8, u16, u32, u64, regc, partial, section
 
 # rv32/64
@@ -64,12 +65,6 @@ def _test_sections():
     >>> imm_j(0b0000000_00011_00000_000_00000_0000000)
     2050
     '''
-
-class CSR(Enum):
-    MEPC = 0x341
-
-    def __str__(self):
-        return f'{self.name}'
 
 class Mnemonic(Enum):
     UNDEFINED = auto()
@@ -461,6 +456,14 @@ def actor(instruction, cpu):
             cpu.rd(i32(cpu.registers[instruction.rs1].value + instruction.imm_i))
         case Mnemonic.MRET:
             # return from a trap in M-mode
+            # clear mstatus.MPRV when leaving M-mode
+            # MPP holds value y
+            # MIE set to MPIE
+            # previous mode change to y
+            # MPIE set to 1
+            # MPP set to U if U else M
+            # MPP != M then MRET set MPRV = 0
+            # An MRET or SRET instruction that changes the privilege mode to a mode less privileged than M also sets MPRV=0.
             new_pc = cpu.csrs[CSR.MEPC.value]
         # Atomic Memory Operations
         case Mnemonic.AMOSWAP_W:
