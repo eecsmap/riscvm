@@ -44,14 +44,14 @@ LOGGING_CONFIG = {
         #     'level': 'INFO',
         #     'propagate': False
         # },
-        # 'riscvm.uart': {
-        #     'handlers': ['riscvm'],
-        #     'level': 'DEBUG',
-        #     'propagate': False
-        # },
+        'riscvm.uart': {
+            'handlers': ['riscvm'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
         '__main__': {  # if __name__ == '__main__'
             'handlers': ['riscvm'],
-            'level': 'INFO',
+            'level': 'DEBUG',
             'propagate': False
         },
     }
@@ -122,9 +122,9 @@ class XV6(Emulator):
         mtime = 0xbff8
         clint.write(mtime, 8, 0xfd03)
         bus.add_device(clint, (clint_base, clint_size))
+        
         UART_BASE = 0x1000_0000
         UART_SIZE = 0x100
-        
         bus.add_device(UART(UART_SIZE, uart_output_file), (UART_BASE, UART_SIZE))
         bootloader = RAM()
         bootloader.data = bytearray(binascii.unhexlify('9702000013868202732540f183b5020283b282016780020000000080000000000000008700000000'))
