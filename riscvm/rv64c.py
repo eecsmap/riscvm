@@ -448,7 +448,7 @@ def actor(instruction, cpu):
             # addiw rd, rd, imm[5:0]
             # sext.w rd
             assert instruction.rd != 0
-            cpu.registers[instruction.rd].value += i32(cpu.registers[instruction.rd].value) + instruction.imm_5_0
+            cpu.registers[instruction.rd].value = i32(cpu.registers[instruction.rd].value) + instruction.imm_5_0
         case Mnemonic.ANDI:
             # andi rd_, rd_, imm[5:0]
             cpu.registers[instruction.rs1_prime].value &= instruction.imm_5_0

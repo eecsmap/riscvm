@@ -27,6 +27,7 @@ class CPU:
         self.bus = bus
         self.csrs = {
             CSR.MSTATUS.value : 0xa00000000,
+            CSR.MIE.value : 0x222,
         } # hopefully we are not going to use csrs too frequently, otherwise we need an array
 
     def fetch(self):
