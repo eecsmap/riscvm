@@ -1,9 +1,11 @@
 import sys
 
+# python tools/filter_dump.py <tests/dump_qemu.txt > ref_dump.txt
+
 skip = False
 for line in sys.stdin:
-    if line.startswith('=> 0x'):
-        print(line, end='')
+    if line.startswith('=> '):
+        #print(line, end='')
         skip = True
     if line.startswith('ra'):
         skip = False
