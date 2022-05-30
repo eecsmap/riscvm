@@ -91,11 +91,11 @@ class Emulator:
         count = 0
         while self.cpu.fetch():
             #if count % 100000 == 0:
-            #print(f'[{count:-5}] {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')#, use_symbol=True, pc=self.cpu.pc.value)}')
-            print(f'=> {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')#, use_symbol=True, pc=self.cpu.pc.value)}')
+            print(f'[{count:-5}] {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')#, use_symbol=True, pc=self.cpu.pc.value)}')
+            #print(f'=> {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')#, use_symbol=True, pc=self.cpu.pc.value)}')
             #logger.debug(info(self.cpu.instruction))
             self.cpu.execute()
-            self.dump_registers()
+            #self.dump_registers()
             count += 1
             #if count == 90: break # before calling consoleinit()
             #if count == 440: break # checking .con
@@ -118,7 +118,10 @@ class XV6(Emulator):
         # core local interrupt
         clint_base = 0x200_0000
         clint_size = 0x1_0000
-        bus.add_device(RAM(clint_size), (clint_base, clint_size))
+        clint = RAM(clint_size)
+        mtime = 0xbff8
+        clint.write(mtime, 8, 0xfd03)
+        bus.add_device(clint, (clint_base, clint_size))
         UART_BASE = 0x1000_0000
         UART_SIZE = 0x100
         bus.add_device(UART(UART_SIZE, uart_output_file), (UART_BASE, UART_SIZE))

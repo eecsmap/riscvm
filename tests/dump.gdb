@@ -6,6 +6,12 @@ set disassemble-next-line off
 #set logging enabled on
 
 #b *0x80000000
+#b *0x800000f4
+b *0x80000e72
+commands
+echo hello
+c
+end
 
 set $count=1
 
