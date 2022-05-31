@@ -176,12 +176,7 @@ class Mnemonic(Enum):
     AMOMAXU_D = auto()
     # Privileged
     MRET = auto()
-    # Compressed
-    C_LUI = auto()
-    C_ADDI = auto()
-    C_ADD = auto()
-    C_SDSP = auto()
-    C_ADDI4SPN = auto()
+    SFENCE_VMA = auto()
 
     def __str__(self):
         return f'{self.name}'.replace('_', '.')
@@ -344,6 +339,7 @@ MNEMONICS = {
                 0b00000: Mnemonic.ECALL,
                 0b00001: Mnemonic.EBREAK,
             },
+            0b0001001: Mnemonic.SFENCE_VMA, # Supervisor Memory-Management Instructions
             0b0011000: Mnemonic.MRET,
         },
         0b001: Mnemonic.CSRRW,
@@ -477,7 +473,9 @@ def actor(instruction, cpu):
         # 
         case Mnemonic.SRL:
             cpu.rd(cpu.registers[instruction.rs1].value >> (cpu.registers[instruction.rs2].value & 0b11111))
-        
+        case Mnemonic.SFENCE_VMA:
+            pass
+            
         case _:
             error(f'invalid instruction: {instruction}')
     cpu.pc.value = new_pc
