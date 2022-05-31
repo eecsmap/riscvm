@@ -60,6 +60,7 @@ LOGGING_CONFIG = {
 logging.config.dictConfig(LOGGING_CONFIG)
 
 from riscvm import CPU
+from riscvm.exception import InternalException, error
 from riscvm.bus import Bus
 from riscvm.rv64i import get_asm, info
 from riscvm.ram import RAM
@@ -89,18 +90,27 @@ class Emulator:
 
     def run(self, limit=0):
         count = 0
-        while self.cpu.fetch():
-            #if count % 100000 == 0:
-            print(f'[{count:-5}] {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')#, use_symbol=True, pc=self.cpu.pc.value)}')
-            #print(f'=> {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')#, use_symbol=True, pc=self.cpu.pc.value)}')
-            #logger.debug(info(self.cpu.instruction))
-            self.cpu.execute()
-            #self.dump_registers()
-            count += 1
-            #if count == 90: break # before calling consoleinit()
-            #if count == 440: break # checking .con
-            if (limit and count == limit):
-                break
+        try:
+            while self.cpu.fetch():
+                #if count % 100000 == 0:
+                #
+                if count % 10000 == 0:
+                    print(count, end='\r')
+                #print(f'[{count:-5}] {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')#, use_symbol=True, pc=self.cpu.pc.value)}')
+                #print(f'=> {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')#, use_symbol=True, pc=self.cpu.pc.value)}')
+                #logger.debug(info(self.cpu.instruction))
+                self.cpu.execute()
+                #self.dump_registers()
+                count += 1
+                #if count == 90: break # before calling consoleinit()
+                #if count == 440: break # checking .con
+                if (limit and count == limit):
+                    break
+        except InternalException as e:
+            print(e)
+            self.dump_registers()
+            print(f'[{count:-5}] {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')
+            raise e
 
 class XV6(Emulator):
 
@@ -122,7 +132,6 @@ class XV6(Emulator):
         mtime = 0xbff8
         clint.write(mtime, 8, 0xfd03)
         bus.add_device(clint, (clint_base, clint_size))
-        
         UART_BASE = 0x1000_0000
         UART_SIZE = 0x100
         bus.add_device(UART(UART_SIZE, uart_output_file), (UART_BASE, UART_SIZE))

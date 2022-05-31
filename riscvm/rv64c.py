@@ -18,7 +18,7 @@
 from enum import Enum, auto
 from functools import partial
 from riscvm.exception import error
-from riscvm.utils import section, u16, i6, i32, i, regc, lookup_mnemonic
+from riscvm.utils import section, u16, i6, i32, i64, i, regc, lookup_mnemonic
 
 # we are based on rv64
 BASE_ISA = 'RV64'
@@ -172,6 +172,7 @@ class Mnemonic(Enum):
     LI = auto()
     ADDIW = auto()
     ANDI = auto()
+    SRAI = auto()
     SRLI = auto()
     SLLI = auto()
     ADD = auto()
@@ -200,6 +201,8 @@ MNEMONICS = {
             # funct6
             0b100_0_00: Mnemonic.SRLI,
             0b100_1_00: Mnemonic.SRLI,
+            0b100_0_01: Mnemonic.SRAI,
+            0b100_1_01: Mnemonic.SRAI,
             0b100_0_10: Mnemonic.ANDI,
             0b100_1_10: Mnemonic.ANDI,
             0b100_0_11: {
@@ -368,7 +371,7 @@ def get_asm(instruction, pc=0):
         case Mnemonic.ANDI:
             rest = ','.join([regc(instruction.rs1_prime), regc(instruction.rs1_prime), f'{instruction.imm_5_0}'])
             return f'{mnemonic}\t{rest}'
-        case Mnemonic.SRLI:
+        case Mnemonic.SRAI | Mnemonic.SRLI:
             rest = ','.join([regc(instruction.rs1_prime), regc(instruction.rs1_prime), f'0x{instruction.shamt:x}'])
             return f'{mnemonic}\t{rest}'
         case Mnemonic.SLLI:
@@ -387,6 +390,8 @@ def get_asm(instruction, pc=0):
         case Mnemonic.MV:
             rest = ','.join([regc(instruction.rs1), regc(instruction.rs2)])
             return f'{mnemonic}\t{rest}'
+        case _:
+            return f'0x{instruction.value:08x}'
 
 def actor(instruction, cpu):
     mnemonic = get_mnemonic(instruction)
@@ -452,6 +457,10 @@ def actor(instruction, cpu):
         case Mnemonic.ANDI:
             # andi rd_, rd_, imm[5:0]
             cpu.registers[instruction.rs1_prime].value &= instruction.imm_5_0
+        case Mnemonic.SRAI:
+            # srai rd_, rd_, shamt[5:0]
+            assert instruction.shamt != 0
+            cpu.registers[instruction.rs1_prime].value = i64(cpu.registers[instruction.rs1_prime].value) >> instruction.shamt
         case Mnemonic.SRLI:
             # srli rd_, rd_, shamt[5:0]
             assert instruction.shamt != 0
@@ -482,7 +491,6 @@ def actor(instruction, cpu):
             assert instruction.rs1 != 0
             assert instruction.rs2 != 0
             cpu.registers[instruction.rs1].value = cpu.registers[instruction.rs2].value
-        
         case _:
-            error('invalid instruction')
+            error(f'invalid instruction: {instruction} @0x{cpu.pc.value:016x}')
     cpu.pc.value = new_pc
