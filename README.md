@@ -68,7 +68,7 @@ objcopy -O binary fib.o fib.bin
 3. run `make test` to run tests.
 4. add implementation to pass tests.
 
-## examples of toolss
+## examples of tools
 ```
 python tools/as.py
 mv a0, a1
@@ -76,3 +76,30 @@ mv a0, a1
 python tools/as.py --dis
 852e
 ```
+
+## dev scenarios
+if you run make next and see
+```
+riscvm.exception.InternalException: invalid instruction: UNDEFINED
+        0x12000073
+        UNDEFINED
+        SYSTEM
+        opcode  :0001001_00000_00000_000_00000_1110011  0x73
+        rd      :0001001_00000_00000_000_00000_1110011  x0      zero
+        funct3  :0001001_00000_00000_000_00000_1110011  0x0
+        rs1     :0001001_00000_00000_000_00000_1110011  x0      zero
+        rs2     :0001001_00000_00000_000_00000_1110011  x0      zero
+        funct7  :0001001_00000_00000_000_00000_1110011  0x09
+        I imm   :0001001_00000_00000_000_00000_1110011  288
+        S imm   :0001001_00000_00000_000_00000_1110011  288
+        B imm   :0001001_00000_00000_000_00000_1110011  288
+        U imm   :0001001_00000_00000_000_00000_1110011  301989888
+        J imm   :0_0010010000_0_00000000_00000_1110011  288
+```
+then just run
+```
+python tools/as.py --dis
+12000073
+['sfence.vma']
+```
+to figure out what needs to be implement next. For this example, it is `sfence.vma`

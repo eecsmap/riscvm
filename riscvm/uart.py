@@ -354,7 +354,7 @@ class UART:
                 'dll', 'dlm', 'iir', 'lcr', 'mcr', 'lsr', 'msr', 'scr'
             ]
         ]
-        logger.info(f'*** uart read from\t{regname[self.dlab][address]}({address}): 0x{value:02X} \'{value:c}\'')
+        #logger.info(f'*** uart read from\t{regname[self.dlab][address]}({address}): 0x{value:02X} \'{value:c}\'')
         return value
 
     def write(self, address, size, value):
@@ -369,7 +369,7 @@ class UART:
             ]
         ]
         assert address not in {5, 6}, 'uart register illegal write'
-        logger.debug(f'*** uart write to\t{regname[self.dlab][address]}({address}): 0x{value:02x}')
+        #logger.debug(f'*** uart write to\t{regname[self.dlab][address]}({address}): 0x{value:02x}')
 
         match address:
             case 0:
@@ -377,7 +377,7 @@ class UART:
                     self.dll = value
                 else:
                     # THR
-                    logger.info(f'*** uart write to\t{regname[self.dlab][address]}({address}): 0x{value:02x} \'{value:c}\'')
+                    #logger.info(f'*** uart write to\t{regname[self.dlab][address]}({address}): 0x{value:02x} \'{value:c}\'')
                     if self.output:
                         self.output.write(chr(value).encode())
             case 1:

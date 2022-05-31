@@ -9,6 +9,7 @@ USE_SYMBOL = True
 
 from riscvm.csr import CSR
 from riscvm.utils import lookup_mnemonic, i, i8, i16, i32, i64, u8, u16, u32, u64, regc, partial, section
+from riscvm.exception import error
 
 # rv32/64
 opcode = partial(section, pos=0, nbits=7)
@@ -472,6 +473,11 @@ def actor(instruction, cpu):
             cpu.rd(old_value)
         case Mnemonic.FENCE:
             pass
+        
+        # 
+        case Mnemonic.SRL:
+            cpu.rd(cpu.registers[instruction.rs1].value >> (cpu.registers[instruction.rs2].value & 0b11111))
+        
         case _:
             error(f'invalid instruction: {instruction}')
     cpu.pc.value = new_pc

@@ -4,5 +4,5 @@ class BaseException(Exception):
 class InternalException(BaseException):
     '''riscvm internal exception'''
 
-def error(message):
+def error(message='default error message'):
     raise InternalException(message)
