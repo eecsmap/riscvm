@@ -140,6 +140,16 @@ class XV6(Emulator):
         UART_BASE = 0x1000_0000
         UART_SIZE = 0x100
         bus.add_device(UART(UART_SIZE, uart_output_file), (UART_BASE, UART_SIZE))
+        plic_base = 0x0C00_0000
+        plic_size = 0x0FFF_FFFF - plic_base + 1
+        bus.add_device(RAM(plic_size), (plic_base, plic_size))
+        #virtio_disk_base = 0x10001000
+        #virtio_disk_size = 0x1000
+        #bus.add_device(RAM(virtio_disk_size), (virtio_disk_base, virtio_disk_size))
+        # virtio_net_base = 0x10002000
+        # virtio_net_size = 0x1000
+        # bus.add_device(RAM(virtio_net_size), (virtio_net_base, virtio_net_size))
+
         bootloader = RAM()
         bootloader.data = bytearray(binascii.unhexlify('9702000013868202732540f183b5020283b282016780020000000080000000000000008700000000'))
         bus.add_device(bootloader, (0x1000, len(bootloader)))
