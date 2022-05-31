@@ -111,6 +111,11 @@ class Emulator:
             self.dump_registers()
             print(f'[{count:-5}] {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')
             raise e
+        except KeyboardInterrupt:
+            print('\n')
+            self.dump_registers()
+            print(f'[{count:-5}] {self.cpu.pc.value:016x}: ({self.cpu.instruction.value:0{2 * self.cpu.instruction.size}x})\t{self.cpu.instruction.asm(pc=self.cpu.pc.value)}')
+            raise
 
 class XV6(Emulator):
 
