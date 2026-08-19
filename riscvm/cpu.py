@@ -31,11 +31,17 @@ class CPU:
         } # hopefully we are not going to use csrs too frequently, otherwise we need an array
 
     def fetch(self):
-        data = self.bus.read(self.pc.value, self.RV64C_SIZE)
+        # single 4-byte read; RVC-format constructors mask down to their own width,
+        # so we never need a second bus dispatch to disambiguate.
+        # NOTE: this reads 4 bytes even for a 2-byte compressed instruction, which
+        # can over-read past the end of a device's mapped range at the very top of
+        # memory. Fine for a boot-time PC deep inside RAM; would need a bounds guard
+        # (or fall back to the 2-byte read near a device boundary) for a fully general RVC decoder.
+        data = self.bus.read(self.pc.value, self.RV64I_SIZE)
 
         match data & 0b11:
             case 0b11:
-                self.instruction = RV64I_Instruction(self.bus.read(self.pc.value, self.RV64I_SIZE))
+                self.instruction = RV64I_Instruction(data)
             case 0b00 | 0b01 | 0b10:
                 self.instruction = RV64C_Instruction(data)
             case _:
