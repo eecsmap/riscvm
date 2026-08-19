@@ -366,7 +366,7 @@ def get_mnemonic(instruction):
 def actor(instruction, cpu):
     mnemonic = get_mnemonic(instruction)
     new_pc = cpu.pc.value + 4
-    match get_mnemonic(instruction):
+    match mnemonic:
         case Mnemonic.LB:
             cpu.rd(i8(cpu.bus.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 1)))
         case Mnemonic.LH:
