@@ -110,6 +110,31 @@ def test_clint_mtip_not_delivered_when_mtie_disabled():
     assert not taken
     assert cpu.pc.value == 0x1000
 
+def test_clint_mtip_never_delegated_even_if_mideleg_says_so():
+    # xv6's start() sets mideleg = 0xffff (delegate everything) in one shot,
+    # covering the M-mode-only interrupt bits too even though it's really
+    # only trying to delegate SSI/STI/SEI. Real hardware hardwires those
+    # bits in mideleg to zero; if we didn't too, a raw MTIP would land in
+    # S-mode's scause as cause 7, which isn't a defined S-mode interrupt --
+    # exactly the "panic: kerneltrap" this regressed to once.
+    cpu = make_cpu()
+    cpu.clint = CLINT(0x10000)
+    cpu.clint.mtimecmp[0] = 5
+    cpu.mode = PrivilegeLevel.S.value
+    csr_write(cpu, CSR.MIDELEG.value, 0xffff)
+    csr_write(cpu, CSR.MIE.value, 1 << 7)  # MTIE
+    cpu.csrs[CSR.MTVEC.value] = 0x5000
+    cpu.csrs[CSR.STVEC.value] = 0x6000
+    cpu.pc.value = 0x1000
+
+    for _ in range(5):
+        cpu.clint.tick()
+    taken = check_interrupt(cpu)
+    assert taken
+    assert cpu.mode == PrivilegeLevel.M.value
+    assert cpu.pc.value == 0x5000  # mtvec, not stvec
+    assert cpu.csrs[CSR.MCAUSE.value] == (7 | (1 << 63))
+
 def test_supervisor_software_interrupt_delivered_via_sip():
     # this is the mechanism xv6's M-mode timervec actually uses to hand a
     # tick to S-mode: write bit 1 (SSIP) of sip after reprogramming mtimecmp.
