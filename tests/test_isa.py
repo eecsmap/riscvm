@@ -64,6 +64,9 @@ td_shift_i = (
     # rs1_value, instruction, rd_expected
     (0xffff_ffff_ffff_fff0, 0x0040d093, 0x0fff_ffff_ffff_ffff), # srli x1, x1, 4
     (0xffff_ffff_ffff_fff0, 0x4040d093, 0xffff_ffff_ffff_ffff), # srai x1, x1, 4
+    (0xffff_ffff_8000_0000, 0x40909b, 0x0), # slliw x1,x1,4; 0x80000000<<4 truncated+sign-extended -> 0
+    (0xffff_ffff_ffff_fff0, 0x40d09b, 0x0fffffff), # srliw x1,x1,4 (unsigned 32-bit shift, no sign bit set -> positive)
+    (0xffff_ffff_8000_0000, 0x4040d09b, 0xffff_ffff_f800_0000), # sraiw x1,x1,4 (arithmetic: sign bit stays set)
 )
 
 @pytest.mark.parametrize('rs1_value, instruction, rd_expected', td_shift_i)

@@ -497,7 +497,11 @@ def actor(instruction, cpu):
         case Mnemonic.ORI:
             cpu.rd(cpu.registers[instruction.rs1].value | instruction.imm_i)
         case Mnemonic.SLLIW:
-            cpu.rd(cpu.registers[instruction.rs1].value << (instruction.shamt & 0b11111))
+            cpu.rd(i32(cpu.registers[instruction.rs1].value << (instruction.shamt & 0b11111)))
+        case Mnemonic.SRLIW:
+            cpu.rd(i32(u32(cpu.registers[instruction.rs1].value) >> (instruction.shamt & 0b11111)))
+        case Mnemonic.SRAIW:
+            cpu.rd(i32(i32(cpu.registers[instruction.rs1].value) >> (instruction.shamt & 0b11111)))
         case Mnemonic.ADDIW:
             cpu.rd(i32(cpu.registers[instruction.rs1].value + instruction.imm_i))
         case Mnemonic.MRET:
