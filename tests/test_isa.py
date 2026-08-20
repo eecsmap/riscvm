@@ -47,6 +47,15 @@ def test_R(rd, rs1, rs2, rs1_value, rs2_value, instruction, rd_expected):
     assert cpu.registers[rd].value == rd_expected
 
 
+def test_sh_stores_halfword():
+    ram = RAM(0x100)
+    bus = Bus().add_device(ram, (0, len(ram)))
+    cpu = CPU(bus)
+    cpu.registers[10].value = 0x20  # a0: base address
+    cpu.registers[11].value = 0xbeef  # a1: value to store
+    cpu.execute(Instruction(0xb51223))  # sh a1, 4(a0)
+    assert bus.read(0x24, 2) == 0xbeef
+
 td_shift_i = (
     # rs1_value, instruction, rd_expected
     (0xffff_ffff_ffff_fff0, 0x0040d093, 0x0fff_ffff_ffff_ffff), # srli x1, x1, 4
