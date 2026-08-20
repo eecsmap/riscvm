@@ -7,9 +7,14 @@ logger = logging.getLogger(__name__)
 VERBOSE = True
 USE_SYMBOL = True
 
-from riscvm.csr import CSR
+from riscvm.csr import CSR, PrivilegeLevel
 from riscvm.utils import lookup_mnemonic, i, i8, i16, i32, i64, u8, u16, u32, u64, regc, partial, section
 from riscvm.exception import error
+from riscvm.trap import (
+    csr_read, csr_write, raise_trap,
+    MSTATUS_SIE, MSTATUS_SPIE, MSTATUS_SPP,
+    MSTATUS_MIE, MSTATUS_MPIE, MSTATUS_MPP,
+)
 
 # rv32/64
 opcode = partial(section, pos=0, nbits=7)
@@ -176,6 +181,8 @@ class Mnemonic(Enum):
     AMOMAXU_D = auto()
     # Privileged
     MRET = auto()
+    SRET = auto()
+    WFI = auto()
     SFENCE_VMA = auto()
 
     def __str__(self):
@@ -339,6 +346,10 @@ MNEMONICS = {
                 0b00000: Mnemonic.ECALL,
                 0b00001: Mnemonic.EBREAK,
             },
+            0b0001000: {
+                0b00010: Mnemonic.SRET,
+                0b00101: Mnemonic.WFI,
+            },
             0b0001001: Mnemonic.SFENCE_VMA, # Supervisor Memory-Management Instructions
             0b0011000: Mnemonic.MRET,
         },
@@ -429,11 +440,12 @@ def actor(instruction, cpu):
         case Mnemonic.LUI:
             cpu.rd(instruction.imm_u)
         case Mnemonic.CSRRS:
-            cpu.rd(cpu.csrs.setdefault(instruction.csr, 0))
-            cpu.csrs[instruction.csr] |= cpu.registers[instruction.rs1].value
+            old = csr_read(cpu, instruction.csr)
+            cpu.rd(old)
+            csr_write(cpu, instruction.csr, old | cpu.registers[instruction.rs1].value)
         case Mnemonic.CSRRW:
-            cpu.rd(cpu.csrs.setdefault(instruction.csr, 0))
-            cpu.csrs[instruction.csr] = cpu.registers[instruction.rs1].value
+            cpu.rd(csr_read(cpu, instruction.csr))
+            csr_write(cpu, instruction.csr, cpu.registers[instruction.rs1].value)
         case Mnemonic.MUL:
             cpu.rd(cpu.registers[instruction.rs1].value * cpu.registers[instruction.rs2].value)
         case Mnemonic.JAL:
@@ -461,16 +473,30 @@ def actor(instruction, cpu):
         case Mnemonic.ADDIW:
             cpu.rd(i32(cpu.registers[instruction.rs1].value + instruction.imm_i))
         case Mnemonic.MRET:
-            # return from a trap in M-mode
-            # clear mstatus.MPRV when leaving M-mode
-            # MPP holds value y
-            # MIE set to MPIE
-            # previous mode change to y
-            # MPIE set to 1
-            # MPP set to U if U else M
-            # MPP != M then MRET set MPRV = 0
-            # An MRET or SRET instruction that changes the privilege mode to a mode less privileged than M also sets MPRV=0.
-            new_pc = cpu.csrs[CSR.MEPC.value]
+            mstatus = cpu.csrs.get(CSR.MSTATUS.value, 0)
+            mpie = bool(mstatus & MSTATUS_MPIE)
+            mpp = (mstatus & MSTATUS_MPP) >> 11
+            mstatus = (mstatus & ~MSTATUS_MIE) | (MSTATUS_MIE if mpie else 0)  # MIE = MPIE
+            mstatus |= MSTATUS_MPIE  # MPIE = 1
+            mstatus &= ~MSTATUS_MPP  # MPP = U (0) after return, per spec
+            cpu.csrs[CSR.MSTATUS.value] = mstatus
+            cpu.mode = mpp
+            new_pc = cpu.csrs.get(CSR.MEPC.value, 0)
+        case Mnemonic.SRET:
+            sstatus = cpu.csrs.get(CSR.MSTATUS.value, 0)  # sstatus is an aliased view of mstatus
+            spie = bool(sstatus & MSTATUS_SPIE)
+            spp = (sstatus & MSTATUS_SPP) >> 8
+            sstatus = (sstatus & ~MSTATUS_SIE) | (MSTATUS_SIE if spie else 0)  # SIE = SPIE
+            sstatus |= MSTATUS_SPIE  # SPIE = 1
+            sstatus &= ~MSTATUS_SPP  # SPP = U (0) after return, per spec
+            cpu.csrs[CSR.MSTATUS.value] = sstatus
+            cpu.mode = spp
+            new_pc = cpu.csrs.get(CSR.SEPC.value, 0)
+        case Mnemonic.WFI:
+            pass  # interrupts are checked every instruction regardless; nothing to wait for
+        case Mnemonic.ECALL:
+            cause = 8 + cpu.mode  # 8 = U-mode ecall, 9 = S-mode ecall, 11 = M-mode ecall
+            new_pc = raise_trap(cpu, cause, is_interrupt=False)
         # Atomic Memory Operations
         case Mnemonic.AMOSWAP_W:
             old_value = i32(cpu.read(cpu.registers[instruction.rs1].value, 4))

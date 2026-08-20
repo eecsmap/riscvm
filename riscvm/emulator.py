@@ -66,6 +66,8 @@ from riscvm.rv64i import get_asm, info
 from riscvm.ram import RAM
 from riscvm.uart import UART
 from riscvm.virtio import VirtIOBlk
+from riscvm.clint import CLINT
+from riscvm.plic import PLIC
 from riscvm.utils import regc
 import binascii
 import logging
@@ -134,19 +136,22 @@ class XV6(Emulator):
         # core local interrupt
         clint_base = 0x200_0000
         clint_size = 0x1_0000
-        clint = RAM(clint_size)
-        mtime = 0xbff8
-        clint.write(mtime, 8, 0xfd03)
+        clint = CLINT(clint_size)
         bus.add_device(clint, (clint_base, clint_size))
+        self.cpu.clint = clint
         UART_BASE = 0x1000_0000
         UART_SIZE = 0x100
         bus.add_device(UART(UART_SIZE, uart_output_file), (UART_BASE, UART_SIZE))
-        plic_base = 0x0C00_0000
-        plic_size = 0x0FFF_FFFF - plic_base + 1
-        bus.add_device(RAM(plic_size), (plic_base, plic_size))
         virtio_disk_base = 0x10001000
         virtio_disk_size = 0x1000
-        bus.add_device(VirtIOBlk(bus), (virtio_disk_base, virtio_disk_size))
+        virtio = VirtIOBlk(bus)
+        bus.add_device(virtio, (virtio_disk_base, virtio_disk_size))
+        VIRTIO0_IRQ = 1
+        plic_base = 0x0C00_0000
+        plic_size = 0x0FFF_FFFF - plic_base + 1
+        plic = PLIC(plic_size, devices_by_irq={VIRTIO0_IRQ: virtio})
+        bus.add_device(plic, (plic_base, plic_size))
+        self.cpu.plic = plic
         # virtio_net_base = 0x10002000
         # virtio_net_size = 0x1000
         # bus.add_device(RAM(virtio_net_size), (virtio_net_base, virtio_net_size))
