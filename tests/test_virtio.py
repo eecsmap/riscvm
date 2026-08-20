@@ -35,7 +35,7 @@ def test_disk_image_smaller_than_disk_size_is_zero_padded():
 def test_identification():
     bus, dev = make_device()
     assert bus.read(0x10001000 + VirtIOBlk.MAGIC_VALUE, 4) == VirtIOBlk.MAGIC
-    assert bus.read(0x10001000 + VirtIOBlk.VERSION, 4) == 1
+    assert bus.read(0x10001000 + VirtIOBlk.VERSION, 4) == 2
     assert bus.read(0x10001000 + VirtIOBlk.DEVICE_ID, 4) == 2
     assert bus.read(0x10001000 + VirtIOBlk.VENDOR_ID, 4) == VirtIOBlk.VENDOR
 
@@ -55,18 +55,33 @@ def write_desc(bus, table_addr, idx, addr, length, flags, nxt):
     bus.write(off + 12, 2, flags)
     bus.write(off + 14, 2, nxt)
 
-def setup_queue(bus, dev, queue_pfn=1, queue_num=8):
+def setup_queue(bus, dev, desc_addr=0x2000, avail_addr=0x3000, used_addr=0x4000, queue_num=8):
     bus.write(0x10001000 + VirtIOBlk.QUEUE_SEL, 4, 0)
     bus.write(0x10001000 + VirtIOBlk.QUEUE_NUM, 4, queue_num)
-    bus.write(0x10001000 + VirtIOBlk.QUEUE_PFN, 4, queue_pfn)
-    return queue_pfn * 0x1000, queue_num
+    bus.write(0x10001000 + VirtIOBlk.QUEUE_DESC_LOW, 4, desc_addr & 0xffffffff)
+    bus.write(0x10001000 + VirtIOBlk.QUEUE_DESC_HIGH, 4, desc_addr >> 32)
+    bus.write(0x10001000 + VirtIOBlk.DRIVER_DESC_LOW, 4, avail_addr & 0xffffffff)
+    bus.write(0x10001000 + VirtIOBlk.DRIVER_DESC_HIGH, 4, avail_addr >> 32)
+    bus.write(0x10001000 + VirtIOBlk.DEVICE_DESC_LOW, 4, used_addr & 0xffffffff)
+    bus.write(0x10001000 + VirtIOBlk.DEVICE_DESC_HIGH, 4, used_addr >> 32)
+    bus.write(0x10001000 + VirtIOBlk.QUEUE_READY, 4, 1)
+    return desc_addr, avail_addr, used_addr, queue_num
+
+def test_queue_desc_addr_roundtrips_across_low_high_halves():
+    bus, dev = make_device()
+    bus.write(0x10001000 + VirtIOBlk.QUEUE_DESC_LOW, 4, 0x12345678)
+    bus.write(0x10001000 + VirtIOBlk.QUEUE_DESC_HIGH, 4, 0x9abcdef0)
+    assert dev.desc_addr == 0x9abcdef012345678
+
+def test_queue_ready_roundtrip():
+    bus, dev = make_device()
+    assert bus.read(0x10001000 + VirtIOBlk.QUEUE_READY, 4) == 0
+    bus.write(0x10001000 + VirtIOBlk.QUEUE_READY, 4, 1)
+    assert bus.read(0x10001000 + VirtIOBlk.QUEUE_READY, 4) == 1
 
 def test_block_read_returns_disk_contents():
     bus, dev = make_device()
-    base, num = setup_queue(bus, dev)
-    desc_base = base
-    avail_base = base + num * 16
-    used_base = base + 0x1000
+    desc_base, avail_base, used_base, num = setup_queue(bus, dev)
 
     # seed the synthetic disk at sector 3 so we can tell a real read happened
     dev.disk[3 * 512:3 * 512 + 4] = b'\xde\xad\xbe\xef'
@@ -95,9 +110,7 @@ def test_block_read_returns_disk_contents():
 
 def test_block_write_persists_to_disk():
     bus, dev = make_device()
-    base, num = setup_queue(bus, dev)
-    desc_base = base
-    avail_base = base + num * 16
+    desc_base, avail_base, used_base, num = setup_queue(bus, dev)
 
     header_addr = 0x8000
     data_addr = 0x9000
