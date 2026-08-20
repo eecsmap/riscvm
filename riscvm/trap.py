@@ -69,6 +69,8 @@ def raise_trap(cpu, cause, is_interrupt, tval=0):
     per medeleg/mideleg, and return the new pc (the chosen trap vector).
     '''
     deleg = cpu.csrs.get(CSR.MIDELEG.value if is_interrupt else CSR.MEDELEG.value, 0)
+    if is_interrupt:
+        deleg &= MIDELEG_DELEGATABLE_MASK  # M-mode-only causes (3, 7, 11) can never delegate
     delegate = cpu.mode != PrivilegeLevel.M.value and (deleg >> cause) & 1
 
     scause_value = cause | (1 << 63) if is_interrupt else cause
@@ -111,6 +113,13 @@ _PRIORITY = (
     SUPERVISOR_EXTERNAL_INTERRUPT, SUPERVISOR_SOFTWARE_INTERRUPT, SUPERVISOR_TIMER_INTERRUPT,
 )
 
+# M-mode-only causes (MSI=3, MTI=7, MEI=11) are never delegatable, no matter
+# what's written to mideleg -- real hardware hardwires those bit positions to
+# zero. Without this, xv6's mideleg=0xffff (set once, covering everything)
+# would incorrectly hand a raw machine timer interrupt straight to S-mode
+# instead of the M-mode timervec relaying it via sip.SSIP.
+MIDELEG_DELEGATABLE_MASK = ~((1 << MACHINE_SOFTWARE_INTERRUPT) | (1 << MACHINE_TIMER_INTERRUPT) | (1 << MACHINE_EXTERNAL_INTERRUPT))
+
 def check_interrupt(cpu):
     '''
     Update MIP's hardware-driven bits (MTIP from CLINT, [MS]EIP from PLIC)
@@ -136,7 +145,7 @@ def check_interrupt(cpu):
         bit = 1 << cause
         if not (pending_enabled & bit):
             continue
-        deleg = cpu.csrs.get(CSR.MIDELEG.value, 0)
+        deleg = cpu.csrs.get(CSR.MIDELEG.value, 0) & MIDELEG_DELEGATABLE_MASK
         delegated = cpu.mode != PrivilegeLevel.M.value and (deleg >> cause) & 1
         if delegated:
             if cpu.mode == PrivilegeLevel.S.value and not (mstatus & MSTATUS_SIE):
