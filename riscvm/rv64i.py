@@ -451,6 +451,23 @@ def actor(instruction, cpu):
             rs1_value = cpu.registers[instruction.rs1].value
             cpu.rd(csr_read(cpu, instruction.csr))
             csr_write(cpu, instruction.csr, rs1_value)
+        case Mnemonic.CSRRC:
+            rs1_value = cpu.registers[instruction.rs1].value
+            old = csr_read(cpu, instruction.csr)
+            cpu.rd(old)
+            csr_write(cpu, instruction.csr, old & ~rs1_value)
+        case Mnemonic.CSRRWI:
+            # the rs1 field holds a 5-bit zero-extended immediate here, not a register
+            cpu.rd(csr_read(cpu, instruction.csr))
+            csr_write(cpu, instruction.csr, instruction.rs1)
+        case Mnemonic.CSRRSI:
+            old = csr_read(cpu, instruction.csr)
+            cpu.rd(old)
+            csr_write(cpu, instruction.csr, old | instruction.rs1)
+        case Mnemonic.CSRRCI:
+            old = csr_read(cpu, instruction.csr)
+            cpu.rd(old)
+            csr_write(cpu, instruction.csr, old & ~instruction.rs1)
         case Mnemonic.MUL:
             cpu.rd(cpu.registers[instruction.rs1].value * cpu.registers[instruction.rs2].value)
         case Mnemonic.JAL:
