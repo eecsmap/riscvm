@@ -36,6 +36,7 @@ td_R = (
     (10, 10, 11, 0xffff_ffff_ffff_ffff, 1, 0x00b52533, 1), # slt a0,a0,a1; -1 < 1 (signed) -> 1
     (10, 10, 11, 0xffff_ffff_ffff_ffff, 1, 0x00b53533, 0), # sltu a0,a0,a1; huge < 1 (unsigned) -> 0
     (10, 10, 11, 2, 3, 0x00b53533, 1), # sltu a0,a0,a1; 2 < 3 -> 1
+    (10, 10, 11, 0b1010, 0b0110, 0x00b54533, 0b1100), # xor a0,a0,a1
 )
 
 @pytest.mark.parametrize('rd, rs1, rs2, rs1_value, rs2_value, instruction, rd_expected', td_R)
