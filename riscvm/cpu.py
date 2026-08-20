@@ -4,6 +4,7 @@ from riscvm.register import Register, FixedRegister
 from riscvm.rv64i import Instruction as RV64I_Instruction, actor as rv64i_actor
 from riscvm.rv64c import Instruction as RV64C_Instruction, actor as rv64c_actor
 from riscvm.csr import CSR
+from riscvm.mmu import translate
 
 import logging
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class CPU:
         # can over-read past the end of a device's mapped range at the very top of
         # memory. Fine for a boot-time PC deep inside RAM; would need a bounds guard
         # (or fall back to the 2-byte read near a device boundary) for a fully general RVC decoder.
-        data = self.bus.read(self.pc.value, self.RV64I_SIZE)
+        data = self.bus.read(translate(self, self.pc.value, 'x'), self.RV64I_SIZE)
 
         match data & 0b11:
             case 0b11:
@@ -51,6 +52,12 @@ class CPU:
     def rd(self, value):
         # assume instruction always have rd well defined
         self.registers[self.instruction.rd].value = value
+
+    def read(self, address, size):
+        return self.bus.read(translate(self, address, 'r'), size)
+
+    def write(self, address, size, value):
+        self.bus.write(translate(self, address, 'w'), size, value)
 
     def execute(self, instruction=None):
         if instruction:

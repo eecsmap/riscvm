@@ -40,6 +40,7 @@ class CSR(Enum):
     MEPC = 0x341
     MSTATUS = 0x300
     MIE = 0x304
+    SATP = 0x180
 
     def __str__(self):
         return f'{self.name}'

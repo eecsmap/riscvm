@@ -368,19 +368,19 @@ def actor(instruction, cpu):
     new_pc = cpu.pc.value + 4
     match mnemonic:
         case Mnemonic.LB:
-            cpu.rd(i8(cpu.bus.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 1)))
+            cpu.rd(i8(cpu.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 1)))
         case Mnemonic.LH:
-            cpu.rd(i16(cpu.bus.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 2)))
+            cpu.rd(i16(cpu.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 2)))
         case Mnemonic.LW:
-            cpu.rd(i32(cpu.bus.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 4)))
+            cpu.rd(i32(cpu.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 4)))
         case Mnemonic.LD:
-            cpu.rd(i64(cpu.bus.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 8)))
+            cpu.rd(i64(cpu.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 8)))
         case Mnemonic.LBU:
-            cpu.rd(u8(cpu.bus.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 1)))
+            cpu.rd(u8(cpu.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 1)))
         case Mnemonic.LHU:
-            cpu.rd(u16(cpu.bus.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 2)))
+            cpu.rd(u16(cpu.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 2)))
         case Mnemonic.LWU:
-            cpu.rd(u32(cpu.bus.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 4)))
+            cpu.rd(u32(cpu.read(cpu.registers[instruction.rs1].value + instruction.imm_i, 4)))
         case Mnemonic.XORI:
             cpu.rd(u64(cpu.registers[instruction.rs1].value) ^ u64(instruction.imm_i))
         case Mnemonic.ADDI:
@@ -433,11 +433,11 @@ def actor(instruction, cpu):
             cpu.rd(cpu.pc.value + instruction.size)
             new_pc = cpu.pc.value + instruction.imm_j
         case Mnemonic.SD:
-            cpu.bus.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 8, cpu.registers[instruction.rs2].value)
+            cpu.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 8, cpu.registers[instruction.rs2].value)
         case Mnemonic.SW:
-            cpu.bus.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 4, cpu.registers[instruction.rs2].value)
+            cpu.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 4, cpu.registers[instruction.rs2].value)
         case Mnemonic.SB:
-            cpu.bus.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 1, cpu.registers[instruction.rs2].value)
+            cpu.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 1, cpu.registers[instruction.rs2].value)
         
         case Mnemonic.AND:
             cpu.rd(cpu.registers[instruction.rs1].value & cpu.registers[instruction.rs2].value)
@@ -464,8 +464,8 @@ def actor(instruction, cpu):
             new_pc = cpu.csrs[CSR.MEPC.value]
         # Atomic Memory Operations
         case Mnemonic.AMOSWAP_W:
-            old_value = i32(cpu.bus.read(cpu.registers[instruction.rs1].value, 4))
-            cpu.bus.write(cpu.registers[instruction.rs1].value, 4, cpu.registers[instruction.rs2].value)
+            old_value = i32(cpu.read(cpu.registers[instruction.rs1].value, 4))
+            cpu.write(cpu.registers[instruction.rs1].value, 4, cpu.registers[instruction.rs2].value)
             cpu.rd(old_value)
         case Mnemonic.FENCE:
             pass
@@ -698,6 +698,7 @@ def regx(reg_index):
 def csr_name(csr_index):
     match csr_index:
         case 0xf14: return 'mhartid'
+        case 0x180: return 'satp'
     return f'0x{csr_index:03x}'
 
 def get_asm(instruction, use_symbol=False, pc=0):
