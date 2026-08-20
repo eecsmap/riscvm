@@ -46,6 +46,31 @@ i21 = partial(_i, npower=1<<20)
 i32 = partial(_i, npower=1<<31)
 i64 = partial(_i, npower=1<<63)
 
+def trunc_div(a, b):
+    '''
+    Division truncated toward zero (C/RISC-V semantics), unlike Python's
+    // which floors toward negative infinity for mismatched-sign operands.
+
+    >>> trunc_div(-7, 2)
+    -3
+    >>> (-7) // 2
+    -4
+    '''
+    q = abs(a) // abs(b)
+    return -q if (a < 0) != (b < 0) else q
+
+def trunc_rem(a, b):
+    '''
+    Remainder matching trunc_div (sign follows the dividend), unlike
+    Python's % which follows the divisor's sign.
+
+    >>> trunc_rem(-7, 2)
+    -1
+    >>> (-7) % 2
+    1
+    '''
+    return a - trunc_div(a, b) * b
+
 def _test_integers():
     '''
     >>> i8(0)
