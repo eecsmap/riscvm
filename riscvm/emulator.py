@@ -65,6 +65,7 @@ from riscvm.bus import Bus
 from riscvm.rv64i import get_asm, info
 from riscvm.ram import RAM
 from riscvm.uart import UART
+from riscvm.virtio import VirtIOBlk
 from riscvm.utils import regc
 import binascii
 import logging
@@ -143,9 +144,9 @@ class XV6(Emulator):
         plic_base = 0x0C00_0000
         plic_size = 0x0FFF_FFFF - plic_base + 1
         bus.add_device(RAM(plic_size), (plic_base, plic_size))
-        #virtio_disk_base = 0x10001000
-        #virtio_disk_size = 0x1000
-        #bus.add_device(RAM(virtio_disk_size), (virtio_disk_base, virtio_disk_size))
+        virtio_disk_base = 0x10001000
+        virtio_disk_size = 0x1000
+        bus.add_device(VirtIOBlk(bus), (virtio_disk_base, virtio_disk_size))
         # virtio_net_base = 0x10002000
         # virtio_net_size = 0x1000
         # bus.add_device(RAM(virtio_net_size), (virtio_net_base, virtio_net_size))
