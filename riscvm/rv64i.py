@@ -465,6 +465,8 @@ def actor(instruction, cpu):
         case Mnemonic.SB:
             cpu.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 1, cpu.registers[instruction.rs2].value)
         
+        case Mnemonic.XOR:
+            cpu.rd(cpu.registers[instruction.rs1].value ^ cpu.registers[instruction.rs2].value)
         case Mnemonic.AND:
             cpu.rd(cpu.registers[instruction.rs1].value & cpu.registers[instruction.rs2].value)
         case Mnemonic.ANDI:
