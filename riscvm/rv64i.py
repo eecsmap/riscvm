@@ -409,6 +409,10 @@ def actor(instruction, cpu):
             cpu.rd(cpu.pc.value + instruction.size)
         case Mnemonic.ADD:
             cpu.rd(cpu.registers[instruction.rs1].value + cpu.registers[instruction.rs2].value)
+        case Mnemonic.SLT:
+            cpu.rd(i64(cpu.registers[instruction.rs1].value) < i64(cpu.registers[instruction.rs2].value))
+        case Mnemonic.SLTU:
+            cpu.rd(u64(cpu.registers[instruction.rs1].value) < u64(cpu.registers[instruction.rs2].value))
         case Mnemonic.SUB:
             cpu.rd(cpu.registers[instruction.rs1].value - cpu.registers[instruction.rs2].value)
         case Mnemonic.BNE:
