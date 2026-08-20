@@ -122,7 +122,7 @@ class Emulator:
 
 class XV6(Emulator):
 
-    def __init__(self, program, uart_output_file=None, address=0):
+    def __init__(self, program, uart_output_file=None, address=0, disk_image=None):
         ram = RAM()
         ram.data = bytearray(program)
         stack = RAM(0x8000000) # 128MB for bss, stack, etc.
@@ -144,7 +144,7 @@ class XV6(Emulator):
         bus.add_device(UART(UART_SIZE, uart_output_file), (UART_BASE, UART_SIZE))
         virtio_disk_base = 0x10001000
         virtio_disk_size = 0x1000
-        virtio = VirtIOBlk(bus)
+        virtio = VirtIOBlk(bus, disk_image=disk_image)
         bus.add_device(virtio, (virtio_disk_base, virtio_disk_size))
         VIRTIO0_IRQ = 1
         plic_base = 0x0C00_0000
@@ -166,6 +166,8 @@ if __name__ == '__main__':
     import sys
     parser = argparse.ArgumentParser()
     parser.add_argument('--address', type=lambda x: int(x, 16), default=0)
+    parser.add_argument('--fs-image', type=argparse.FileType('rb'), default=None,
+                         help='xv6 filesystem image (built via mkfs) to back the virtio disk')
     parser.add_argument('file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin.buffer)
     parser.add_argument('uart_output', nargs='?', type=argparse.FileType('wb'), default=sys.stdout.buffer)
     args = parser.parse_args()
@@ -173,4 +175,5 @@ if __name__ == '__main__':
     import mmap
     mm = mmap.mmap(args.file.fileno(), 0, flags=mmap.MAP_PRIVATE)
     data = bytearray(mm)
-    XV6(data, args.uart_output, address=args.address).run()
+    disk_image = args.fs_image.read() if args.fs_image else None
+    XV6(data, args.uart_output, address=args.address, disk_image=disk_image).run()

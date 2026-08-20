@@ -14,6 +14,24 @@ def make_device():
     bus.add_device(dev, (0x10001000, len(dev)))
     return bus, dev
 
+def test_disk_image_backs_the_synthetic_disk():
+    bus = Bus()
+    ram = RAM(0x10000)
+    bus.add_device(ram, (0, len(ram)))
+    image = bytes([0xAB]) * 512 + bytes(512)  # sector 0 = 0xAB..., sector 1 = zero
+    dev = VirtIOBlk(bus, disk_image=image)
+    assert dev.disk[:512] == bytes([0xAB]) * 512
+    assert dev.disk[512:1024] == bytes(512)
+
+def test_disk_image_smaller_than_disk_size_is_zero_padded():
+    bus = Bus()
+    ram = RAM(0x10000)
+    bus.add_device(ram, (0, len(ram)))
+    dev = VirtIOBlk(bus, disk_size=4096, disk_image=bytes([1, 2, 3]))
+    assert len(dev.disk) == 4096
+    assert dev.disk[:3] == bytes([1, 2, 3])
+    assert dev.disk[3] == 0
+
 def test_identification():
     bus, dev = make_device()
     assert bus.read(0x10001000 + VirtIOBlk.MAGIC_VALUE, 4) == VirtIOBlk.MAGIC

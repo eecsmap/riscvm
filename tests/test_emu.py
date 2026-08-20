@@ -1,5 +1,5 @@
 from binascii import unhexlify
-from riscvm.emulator import Emulator
+from riscvm.emulator import Emulator, XV6
 from riscvm.exception import InternalException
 from pytest import raises
 
@@ -16,3 +16,10 @@ def test_fib():
     with raises(InternalException):
         emulator.run()
     assert emulator.cpu.registers[10].value == 23416728348467685
+
+def test_xv6_disk_image_reaches_the_virtio_device():
+    image = bytes([0x11, 0x22, 0x33, 0x44]) + bytes(4092)
+    xv6 = XV6(bytes(64), address=0x80000000, disk_image=image)
+    virtio_disk_base = 0x10001000
+    device, rng = xv6.cpu.bus.get_device(virtio_disk_base, 1)
+    assert device.disk[:4] == bytes([0x11, 0x22, 0x33, 0x44])
