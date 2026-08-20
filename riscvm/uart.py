@@ -1,4 +1,7 @@
+import os
+import select
 from enum import Enum, auto
+from collections import deque
 from riscvm import error, todo
 
 '''
@@ -74,7 +77,12 @@ class Register:
         return 0
 
 class RBR(Register):
-    pass
+    'receiver buffer register'
+    @property
+    def value(self):
+        if self._uart.rx_queue:
+            return self._uart.rx_queue.popleft()
+        return 0
 class IER(Register):
     'interrupt enable register'
     IER_RX_ENABLE = 1<<0
@@ -87,8 +95,10 @@ class IER(Register):
     @value.setter
     def value(self, value):
         assert not self._uart.dlab, 'not accessible in current dlab mode'
-        self._uart.interrupt_enabled_received_data_available = bool(value | self.IER_RX_ENABLE)
-        self._uart.interrupt_enabled_transmitter_holding_register_empty = bool(value | self.IER_TX_ENABLE)
+        # bitwise AND to test the bit, not OR (which is truthy for almost any
+        # value regardless of whether the bit is actually set)
+        self._uart.interrupt_enabled_received_data_available = bool(value & self.IER_RX_ENABLE)
+        self._uart.interrupt_enabled_transmitter_holding_register_empty = bool(value & self.IER_TX_ENABLE)
         assert not value & ~(self.IER_RX_ENABLE | self.IER_TX_ENABLE), "TODO: more flags to handle"
 
 class IIR(Register):
@@ -193,7 +203,7 @@ class DLM(Register):
 
 class UART:
 
-    def __init__(self, size, uart_output_file):
+    def __init__(self, size, uart_output_file, uart_input_file=None):
         # handle hold the lifetime of mmap object
         self.size = size
         #self.handle = gen('mem.dat', size)
@@ -218,7 +228,7 @@ class UART:
         self.line_control_nbits = 0
         self.dll_value = 0
         self.dlm_value = 0
-        self.data_available = True
+        self.rx_queue = deque()
 
         self.filo_enabled = False
         #self.data[LSR] = 1
@@ -228,9 +238,50 @@ class UART:
         #self.dlm = 0
         # lets default to 8bit no parity
         self.output = uart_output_file
+        # optional live input source (e.g. sys.stdin.buffer for an
+        # interactive session); polled non-blockingly once per instruction
+        # (see cpu.py) so typed/piped bytes show up in rx_queue without the
+        # driver having to already know data is coming
+        self.input = uart_input_file
+        self._input_fd = None
+        if self.input is not None and hasattr(self.input, 'fileno'):
+            try:
+                self._input_fd = self.input.fileno()
+            except (OSError, ValueError):
+                self._input_fd = None
 
     def __len__(self):
-        return len(self.data)
+        return self.size
+
+    @property
+    def data_available(self):
+        return bool(self.rx_queue)
+
+    @property
+    def interrupt_status(self):
+        'level-triggered PLIC line: high whenever unread input is sitting in RBR and RX interrupts are enabled'
+        return 1 if (self.data_available and self.interrupt_enabled_received_data_available) else 0
+
+    def inject(self, data):
+        "feed bytes into the receive queue, as if they'd arrived on the wire"
+        self.rx_queue.extend(data)
+
+    def poll_input(self):
+        'best-effort, non-blocking top-up of rx_queue from the configured input source'
+        if self.input is None:
+            return
+        try:
+            if self._input_fd is not None:
+                ready, _, _ = select.select([self._input_fd], [], [], 0)
+                if not ready:
+                    return
+                chunk = os.read(self._input_fd, 256)
+            else:
+                chunk = self.input.read(256)
+        except (BlockingIOError, InterruptedError, OSError):
+            return
+        if chunk:
+            self.inject(chunk if isinstance(chunk, (bytes, bytearray)) else chunk.encode())
 
     @property
     def rbr(self):

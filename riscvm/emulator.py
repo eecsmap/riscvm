@@ -71,6 +71,7 @@ from riscvm.plic import PLIC
 from riscvm.utils import regc
 import binascii
 import logging
+import os
 logger = logging.getLogger(__name__)
 
 class Emulator:
@@ -122,7 +123,7 @@ class Emulator:
 
 class XV6(Emulator):
 
-    def __init__(self, program, uart_output_file=None, address=0, disk_image=None):
+    def __init__(self, program, uart_output_file=None, address=0, disk_image=None, uart_input_file=None):
         ram = RAM()
         # pad up to the next page boundary: a raw `objcopy -O binary` image
         # doesn't always include .bss (depends on the toolchain/linker
@@ -147,15 +148,18 @@ class XV6(Emulator):
         self.cpu.clint = clint
         UART_BASE = 0x1000_0000
         UART_SIZE = 0x100
-        bus.add_device(UART(UART_SIZE, uart_output_file), (UART_BASE, UART_SIZE))
+        uart = UART(UART_SIZE, uart_output_file, uart_input_file)
+        bus.add_device(uart, (UART_BASE, UART_SIZE))
+        self.cpu.uart = uart
         virtio_disk_base = 0x10001000
         virtio_disk_size = 0x1000
         virtio = VirtIOBlk(bus, disk_image=disk_image)
         bus.add_device(virtio, (virtio_disk_base, virtio_disk_size))
         VIRTIO0_IRQ = 1
+        UART0_IRQ = 10
         plic_base = 0x0C00_0000
         plic_size = 0x0FFF_FFFF - plic_base + 1
-        plic = PLIC(plic_size, devices_by_irq={VIRTIO0_IRQ: virtio})
+        plic = PLIC(plic_size, devices_by_irq={VIRTIO0_IRQ: virtio, UART0_IRQ: uart})
         bus.add_device(plic, (plic_base, plic_size))
         self.cpu.plic = plic
         # virtio_net_base = 0x10002000
@@ -174,6 +178,8 @@ if __name__ == '__main__':
     parser.add_argument('--address', type=lambda x: int(x, 16), default=0)
     parser.add_argument('--fs-image', type=argparse.FileType('rb'), default=None,
                          help='xv6 filesystem image (built via mkfs) to back the virtio disk')
+    parser.add_argument('--uart-input', type=argparse.FileType('rb'), default=None,
+                         help='source of console input bytes; defaults to the terminal when stdin is a tty')
     parser.add_argument('file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin.buffer)
     parser.add_argument('uart_output', nargs='?', type=argparse.FileType('wb'), default=sys.stdout.buffer)
     args = parser.parse_args()
@@ -182,4 +188,11 @@ if __name__ == '__main__':
     mm = mmap.mmap(args.file.fileno(), 0, flags=mmap.MAP_PRIVATE)
     data = bytearray(mm)
     disk_image = args.fs_image.read() if args.fs_image else None
-    XV6(data, args.uart_output, address=args.address, disk_image=disk_image).run()
+    uart_input = args.uart_input
+    if uart_input is None and args.file is not sys.stdin.buffer and sys.stdin.isatty():
+        # let the shell's `$ ` prompt actually be usable when run normally
+        # (kernel image given as a real file, terminal attached); a fully
+        # scripted/piped invocation opts in explicitly via --uart-input
+        uart_input = sys.stdin.buffer
+        os.set_blocking(uart_input.fileno(), False)
+    XV6(data, args.uart_output, address=args.address, disk_image=disk_image, uart_input_file=uart_input).run()

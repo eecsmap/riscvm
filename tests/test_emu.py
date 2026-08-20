@@ -36,3 +36,19 @@ def test_xv6_disk_image_reaches_the_virtio_device():
     virtio_disk_base = 0x10001000
     device, rng = xv6.cpu.bus.get_device(virtio_disk_base, 1)
     assert device.disk[:4] == bytes([0x11, 0x22, 0x33, 0x44])
+
+def test_xv6_uart_console_input_reaches_the_shell():
+    # end-to-end: injecting bytes into the UART the same way live keyboard
+    # input would (cpu.uart.inject) makes them readable through the RBR
+    # register at the real UART address, and the UART is wired into the
+    # PLIC on the interrupt line xv6's driver expects (UART0_IRQ = 10).
+    xv6 = XV6(bytes(64), address=0x80000000)
+    assert xv6.cpu.uart is not None
+    UART0_IRQ = 10
+    assert xv6.cpu.plic.devices_by_irq[UART0_IRQ] is xv6.cpu.uart
+
+    xv6.cpu.uart.inject(b'ls\n')
+    UART_BASE = 0x1000_0000
+    RBR, LSR = 0, 5
+    assert xv6.cpu.bus.read(UART_BASE + LSR, 1) & 0x1 == 1
+    assert xv6.cpu.bus.read(UART_BASE + RBR, 1) == ord('l')

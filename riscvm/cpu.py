@@ -32,10 +32,16 @@ class CPU:
             CSR.MIE.value : 0x222,
         } # hopefully we are not going to use csrs too frequently, otherwise we need an array
         self.mode = PrivilegeLevel.M.value
-        # set by XV6 (or any caller wanting timer/external interrupts); a plain
-        # Emulator has no such devices, so interrupt checking stays a no-op
+        # set by XV6 (or any caller wanting timer/external/console interrupts);
+        # a plain Emulator has no such devices, so these stay no-ops
         self.clint = None
         self.plic = None
+        self.uart = None
+        self._uart_poll_countdown = 0
+
+    UART_POLL_INTERVAL = 4096  # instructions between uart.poll_input() calls
+                                # (it's a real select() syscall; a human typing
+                                # is plenty responsive checked this often)
 
     def fetch(self):
         # interrupts are checked once per instruction, at the boundary between
@@ -43,6 +49,11 @@ class CPU:
         # before we fetch, same as a taken branch would
         if self.clint is not None:
             self.clint.tick()
+        if self.uart is not None:
+            self._uart_poll_countdown -= 1
+            if self._uart_poll_countdown <= 0:
+                self.uart.poll_input()
+                self._uart_poll_countdown = self.UART_POLL_INTERVAL
         check_interrupt(self)
 
         # single 4-byte read; RVC-format constructors mask down to their own width,
