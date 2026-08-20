@@ -399,17 +399,17 @@ def actor(instruction, cpu):
     match mnemonic:
         case Mnemonic.SDSP:
             # sd rs2, offset[8:3](x2)
-            cpu.bus.write(cpu.registers[2].value + instruction.offset_8_3_sdsp, 8, cpu.registers[instruction.rs2].value)
+            cpu.write(cpu.registers[2].value + instruction.offset_8_3_sdsp, 8, cpu.registers[instruction.rs2].value)
         case Mnemonic.LDSP:
             # ld rd, offset[8:3](x2)
             assert instruction.rd != 0
-            cpu.registers[instruction.rd].value = cpu.bus.read(cpu.registers[2].value + instruction.offset_8_3_ldsp, 8)
+            cpu.registers[instruction.rd].value = cpu.read(cpu.registers[2].value + instruction.offset_8_3_ldsp, 8)
         case Mnemonic.SD:
             # sd rs2_, offset[7:3](rs1_)
-            cpu.bus.write(cpu.registers[instruction.rs1_prime].value + instruction.offset_7_3, 8, cpu.registers[instruction.rs2_prime].value)
+            cpu.write(cpu.registers[instruction.rs1_prime].value + instruction.offset_7_3, 8, cpu.registers[instruction.rs2_prime].value)
         case Mnemonic.LD:
             # ld rs2_, offset[7:3](rs1_)
-            cpu.registers[instruction.rs2_prime].value = cpu.bus.read(cpu.registers[instruction.rs1_prime].value + instruction.offset_7_3, 8)
+            cpu.registers[instruction.rs2_prime].value = cpu.read(cpu.registers[instruction.rs1_prime].value + instruction.offset_7_3, 8)
         case Mnemonic.BEQZ:
             # beq rs1_, x0, offset[8:1]
             if cpu.registers[instruction.rs1_prime].value == 0:
@@ -423,10 +423,10 @@ def actor(instruction, cpu):
             new_pc = cpu.pc.value + instruction.offset_11_1
         case Mnemonic.SW:
             # sw rs2_, offset[6:2](rs1_)
-            cpu.bus.write(cpu.registers[instruction.rs1_prime].value + instruction.offset_6_2, 4, cpu.registers[instruction.rs2_prime].value)
+            cpu.write(cpu.registers[instruction.rs1_prime].value + instruction.offset_6_2, 4, cpu.registers[instruction.rs2_prime].value)
         case Mnemonic.LW:
             # lw rd_, offset[6:2](rs1_)
-            cpu.registers[instruction.rs2_prime].value = i32(cpu.bus.read(cpu.registers[instruction.rs1_prime].value + instruction.offset_6_2, 4))
+            cpu.registers[instruction.rs2_prime].value = i32(cpu.read(cpu.registers[instruction.rs1_prime].value + instruction.offset_6_2, 4))
         case Mnemonic.ADDI4SPN:
             # addi rd_, x2, nzuimm[9:2]
             assert instruction.nzuimm_9_2 != 0
