@@ -67,6 +67,27 @@ def test_ecall_execute_and_sret_round_trip():
     assert cpu.mode == PrivilegeLevel.U.value
     assert csr_read(cpu, CSR.SSTATUS.value) & MSTATUS_SIE  # SIE restored from SPIE
 
+def test_csrrw_self_swap_preserves_original_value():
+    # xv6's timervec starts with `csrrw a0, mscratch, a0` -- rd and rs1 are
+    # the same register. Writing rd before reading rs1 would clobber the
+    # value being swapped in, silently dropping the original a0 (exactly
+    # what caused a real "panic: release" once, from a0 coming back wrong
+    # after the very first timer interrupt).
+    cpu = make_cpu()
+    cpu.csrs[CSR.MSCRATCH.value] = 0x9000
+    cpu.registers[10].value = 0x1234  # a0
+    cpu.execute(Instruction(0x34051573))  # csrrw a0, mscratch, a0
+    assert cpu.registers[10].value == 0x9000       # a0 <- old mscratch
+    assert cpu.csrs[CSR.MSCRATCH.value] == 0x1234   # mscratch <- old a0
+
+def test_csrrs_self_alias_still_ors_original_value():
+    cpu = make_cpu()
+    cpu.csrs[CSR.MSCRATCH.value] = 0x0f0
+    cpu.registers[10].value = 0x00f
+    cpu.execute(Instruction(0x34052573))  # csrrs a0, mscratch, a0
+    assert cpu.registers[10].value == 0x0f0          # a0 <- old mscratch
+    assert cpu.csrs[CSR.MSCRATCH.value] == 0x0ff     # mscratch <- old | original a0
+
 def test_wfi_is_a_noop():
     cpu = make_cpu()
     cpu.pc.value = 0x1000

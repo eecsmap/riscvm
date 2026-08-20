@@ -440,12 +440,17 @@ def actor(instruction, cpu):
         case Mnemonic.LUI:
             cpu.rd(instruction.imm_u)
         case Mnemonic.CSRRS:
+            # read rs1 before rd() writes: when rd == rs1 (e.g. timervec's
+            # `csrrw a0, mscratch, a0`), writing rd first would clobber the
+            # very register we still need to read for the new CSR value.
+            rs1_value = cpu.registers[instruction.rs1].value
             old = csr_read(cpu, instruction.csr)
             cpu.rd(old)
-            csr_write(cpu, instruction.csr, old | cpu.registers[instruction.rs1].value)
+            csr_write(cpu, instruction.csr, old | rs1_value)
         case Mnemonic.CSRRW:
+            rs1_value = cpu.registers[instruction.rs1].value
             cpu.rd(csr_read(cpu, instruction.csr))
-            csr_write(cpu, instruction.csr, cpu.registers[instruction.rs1].value)
+            csr_write(cpu, instruction.csr, rs1_value)
         case Mnemonic.MUL:
             cpu.rd(cpu.registers[instruction.rs1].value * cpu.registers[instruction.rs2].value)
         case Mnemonic.JAL:
