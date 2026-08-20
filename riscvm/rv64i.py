@@ -443,6 +443,8 @@ def actor(instruction, cpu):
             cpu.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 8, cpu.registers[instruction.rs2].value)
         case Mnemonic.SW:
             cpu.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 4, cpu.registers[instruction.rs2].value)
+        case Mnemonic.SH:
+            cpu.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 2, cpu.registers[instruction.rs2].value)
         case Mnemonic.SB:
             cpu.write(cpu.registers[instruction.rs1].value + instruction.imm_s, 1, cpu.registers[instruction.rs2].value)
         
