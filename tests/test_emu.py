@@ -17,6 +17,19 @@ def test_fib():
         emulator.run()
     assert emulator.cpu.registers[10].value == 23416728348467685
 
+def test_xv6_zero_pads_up_to_page_boundary_past_the_loaded_image():
+    # a raw `objcopy -O binary` image doesn't always include .bss: reading
+    # or writing just past the loaded bytes (but still within the same
+    # page) must hit real, zeroed RAM rather than an unmapped gap between
+    # the kernel image device and the stack device that starts on the next
+    # page boundary.
+    program = bytes(100)  # not page-aligned
+    xv6 = XV6(program, address=0x80000000)
+    gap_address = 0x80000000 + len(program) + 16
+    assert xv6.cpu.bus.read(gap_address, 4) == 0
+    xv6.cpu.bus.write(gap_address, 4, 0xdeadbeef)
+    assert xv6.cpu.bus.read(gap_address, 4) == 0xdeadbeef
+
 def test_xv6_disk_image_reaches_the_virtio_device():
     image = bytes([0x11, 0x22, 0x33, 0x44]) + bytes(4092)
     xv6 = XV6(bytes(64), address=0x80000000, disk_image=image)
