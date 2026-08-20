@@ -8,7 +8,7 @@ VERBOSE = True
 USE_SYMBOL = True
 
 from riscvm.csr import CSR, PrivilegeLevel
-from riscvm.utils import lookup_mnemonic, i, i8, i16, i32, i64, u8, u16, u32, u64, regc, partial, section
+from riscvm.utils import lookup_mnemonic, i, i8, i16, i32, i64, u8, u16, u32, u64, regc, partial, section, trunc_div, trunc_rem
 from riscvm.exception import error
 from riscvm.trap import (
     csr_read, csr_write, raise_trap,
@@ -474,6 +474,72 @@ def actor(instruction, cpu):
             csr_write(cpu, instruction.csr, old & ~instruction.rs1)
         case Mnemonic.MUL:
             cpu.rd(cpu.registers[instruction.rs1].value * cpu.registers[instruction.rs2].value)
+        case Mnemonic.MULH:
+            a = i64(cpu.registers[instruction.rs1].value)
+            b = i64(cpu.registers[instruction.rs2].value)
+            cpu.rd((a * b) >> 64)
+        case Mnemonic.MULHSU:
+            a = i64(cpu.registers[instruction.rs1].value)
+            b = u64(cpu.registers[instruction.rs2].value)
+            cpu.rd((a * b) >> 64)
+        case Mnemonic.MULHU:
+            a = u64(cpu.registers[instruction.rs1].value)
+            b = u64(cpu.registers[instruction.rs2].value)
+            cpu.rd((a * b) >> 64)
+        case Mnemonic.DIV:
+            a = i64(cpu.registers[instruction.rs1].value)
+            b = i64(cpu.registers[instruction.rs2].value)
+            if b == 0:
+                cpu.rd(-1)
+            elif a == -(1 << 63) and b == -1:
+                cpu.rd(a)  # overflow: quotient isn't representable, wraps to the dividend
+            else:
+                cpu.rd(trunc_div(a, b))
+        case Mnemonic.DIVU:
+            a = u64(cpu.registers[instruction.rs1].value)
+            b = u64(cpu.registers[instruction.rs2].value)
+            cpu.rd(-1 if b == 0 else a // b)
+        case Mnemonic.REM:
+            a = i64(cpu.registers[instruction.rs1].value)
+            b = i64(cpu.registers[instruction.rs2].value)
+            if b == 0:
+                cpu.rd(a)
+            elif a == -(1 << 63) and b == -1:
+                cpu.rd(0)
+            else:
+                cpu.rd(trunc_rem(a, b))
+        case Mnemonic.REMU:
+            a = u64(cpu.registers[instruction.rs1].value)
+            b = u64(cpu.registers[instruction.rs2].value)
+            cpu.rd(a if b == 0 else a % b)
+        case Mnemonic.MULW:
+            cpu.rd(i32(cpu.registers[instruction.rs1].value * cpu.registers[instruction.rs2].value))
+        case Mnemonic.DIVW:
+            a = i32(cpu.registers[instruction.rs1].value)
+            b = i32(cpu.registers[instruction.rs2].value)
+            if b == 0:
+                cpu.rd(-1)
+            elif a == -(1 << 31) and b == -1:
+                cpu.rd(a)
+            else:
+                cpu.rd(i32(trunc_div(a, b)))
+        case Mnemonic.DIVUW:
+            a = u32(cpu.registers[instruction.rs1].value)
+            b = u32(cpu.registers[instruction.rs2].value)
+            cpu.rd(-1 if b == 0 else i32(a // b))
+        case Mnemonic.REMW:
+            a = i32(cpu.registers[instruction.rs1].value)
+            b = i32(cpu.registers[instruction.rs2].value)
+            if b == 0:
+                cpu.rd(a)
+            elif a == -(1 << 31) and b == -1:
+                cpu.rd(0)
+            else:
+                cpu.rd(i32(trunc_rem(a, b)))
+        case Mnemonic.REMUW:
+            a = u32(cpu.registers[instruction.rs1].value)
+            b = u32(cpu.registers[instruction.rs2].value)
+            cpu.rd(i32(a) if b == 0 else i32(a % b))
         case Mnemonic.JAL:
             cpu.rd(cpu.pc.value + instruction.size)
             new_pc = cpu.pc.value + instruction.imm_j

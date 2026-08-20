@@ -40,6 +40,24 @@ td_R = (
     (10, 10, 11, 2, 3, 0x00b5053b, 5), # addw a0,a0,a1
     (10, 10, 11, 5, 3, 0x40b5053b, 2), # subw a0,a0,a1
     (10, 10, 11, 0xffff_ffff_0000_0001, 0xffff_ffff_ffff_ffff, 0x00b5053b, 0), # addw wraps to 32 bits: 1 + -1 -> 0
+
+    # M extension: mul/div/rem, 64- and 32-bit forms
+    (10, 10, 11, 7, 2, 0x02b54533, 3), # div a0,a0,a1; 7/2 -> 3
+    (10, 10, 11, 0xffff_ffff_ffff_fff9, 2, 0x02b54533, 0xffff_ffff_ffff_fffd), # div a0,a0,a1; -7/2 -> -3 (truncated toward zero)
+    (10, 10, 11, 0x8000_0000_0000_0000, 0xffff_ffff_ffff_ffff, 0x02b54533, 0x8000_0000_0000_0000), # div a0,a0,a1; INT64_MIN/-1 overflow -> wraps to dividend
+    (10, 10, 11, 5, 0, 0x02b54533, 0xffff_ffff_ffff_ffff), # div a0,a0,a1; divide by zero -> -1
+    (10, 10, 11, 7, 2, 0x02b55533, 3), # divu a0,a0,a1
+    (10, 10, 11, 5, 0, 0x02b55533, 0xffff_ffff_ffff_ffff), # divu a0,a0,a1; divide by zero -> all ones
+    (10, 10, 11, 0xffff_ffff_ffff_fff9, 2, 0x02b56533, 0xffff_ffff_ffff_ffff), # rem a0,a0,a1; -7%2 -> -1 (sign follows dividend)
+    (10, 10, 11, 0x8000_0000_0000_0000, 0xffff_ffff_ffff_ffff, 0x02b56533, 0), # rem a0,a0,a1; INT64_MIN%-1 overflow -> 0
+    (10, 10, 11, 5, 0, 0x02b56533, 5), # rem a0,a0,a1; divide by zero -> dividend
+    (10, 10, 11, 7, 2, 0x02b57533, 1), # remu a0,a0,a1
+    (10, 10, 11, 5, 0, 0x02b57533, 5), # remu a0,a0,a1; divide by zero -> dividend
+    (10, 10, 11, 0xffff_ffff_ffff_fffe, 0x4000_0000_0000_0000, 0x02b51533, 0xffff_ffff_ffff_ffff), # mulh a0,a0,a1; -2 * 2^62 -> high 64 bits all-ones
+    (10, 10, 11, 3, 4, 0x02b5053b, 12), # mulw a0,a0,a1
+    (10, 10, 11, 7, 2, 0x02b5453b, 3), # divw a0,a0,a1
+    (10, 10, 11, 7, 2, 0x02b5653b, 1), # remw a0,a0,a1
+    (14, 11, 12, 7, 2, 0x02c5f733, 1), # remu a4,a1,a2 -- the exact instruction that first exposed this whole gap
 )
 
 @pytest.mark.parametrize('rd, rs1, rs2, rs1_value, rs2_value, instruction, rd_expected', td_R)
