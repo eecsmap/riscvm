@@ -27,6 +27,39 @@ def test_sie_aliases_mie():
     assert cpu.csrs[CSR.MIE.value] == 0x222
     assert csr_read(cpu, CSR.SIE.value) == 0x222
 
+def test_csrrc_clears_bits():
+    # sstatus is an aliased CSR (see test_sstatus_aliases_mstatus), which
+    # only exposes bits 1/5/8 -- use a plain, unaliased CSR here so the test
+    # exercises CSRRC's own clear-bits logic, not the masking.
+    cpu = make_cpu()
+    cpu.csrs[CSR.MSCRATCH.value] = 0b1111
+    cpu.registers[10].value = 0b0101  # a0
+    cpu.execute(Instruction(0x34053773))  # csrrc a4, mscratch, a0
+    assert cpu.registers[14].value == 0b1111  # a4 <- old value
+    assert cpu.csrs[CSR.MSCRATCH.value] == 0b1010  # cleared bits set in a0
+
+def test_csrrwi_uses_immediate_not_register():
+    cpu = make_cpu()
+    cpu.csrs[CSR.MSCRATCH.value] = 0xff
+    cpu.execute(Instruction(0x3402d0f3))  # csrrwi x1, mscratch, 5
+    assert cpu.registers[1].value == 0xff  # x1 <- old mscratch
+    assert cpu.csrs[CSR.MSCRATCH.value] == 5  # mscratch <- immediate 5, not a register
+
+def test_csrrsi_sets_bits_from_immediate():
+    cpu = make_cpu()
+    cpu.csrs[CSR.MSCRATCH.value] = 0b1000
+    cpu.execute(Instruction(0x3401e0f3))  # csrrsi x1, mscratch, 3
+    assert cpu.csrs[CSR.MSCRATCH.value] == 0b1011
+
+def test_csrrci_clears_bits_from_immediate():
+    # the exact instruction that first exposed CSRRCI as unimplemented:
+    # `csrrci s1, sstatus, 2` -- clears SIE via a 5-bit immediate mask.
+    cpu = make_cpu()
+    cpu.csrs[CSR.MSTATUS.value] = 0b111
+    cpu.execute(Instruction(0x100174f3))  # csrrci s1, sstatus, 2
+    assert cpu.registers[9].value == 0b010  # s1 <- old sstatus view (masked to bits 1/5/8: just SIE here)
+    assert cpu.csrs[CSR.MSTATUS.value] == 0b101  # bit 1 (SIE) cleared; untouched bits (0, 2) survive
+
 def test_ecall_from_u_mode_delegated_traps_to_s_mode():
     cpu = make_cpu()
     cpu.mode = PrivilegeLevel.U.value
