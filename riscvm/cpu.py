@@ -3,8 +3,9 @@ from riscvm.exception import error
 from riscvm.register import Register, FixedRegister
 from riscvm.rv64i import Instruction as RV64I_Instruction, actor as rv64i_actor
 from riscvm.rv64c import Instruction as RV64C_Instruction, actor as rv64c_actor
-from riscvm.csr import CSR
+from riscvm.csr import CSR, PrivilegeLevel
 from riscvm.mmu import translate
+from riscvm.trap import check_interrupt
 
 import logging
 logger = logging.getLogger(__name__)
@@ -30,8 +31,20 @@ class CPU:
             CSR.MSTATUS.value : 0xa00000000,
             CSR.MIE.value : 0x222,
         } # hopefully we are not going to use csrs too frequently, otherwise we need an array
+        self.mode = PrivilegeLevel.M.value
+        # set by XV6 (or any caller wanting timer/external interrupts); a plain
+        # Emulator has no such devices, so interrupt checking stays a no-op
+        self.clint = None
+        self.plic = None
 
     def fetch(self):
+        # interrupts are checked once per instruction, at the boundary between
+        # instructions, matching real hardware; a taken interrupt updates pc
+        # before we fetch, same as a taken branch would
+        if self.clint is not None:
+            self.clint.tick()
+        check_interrupt(self)
+
         # single 4-byte read; RVC-format constructors mask down to their own width,
         # so we never need a second bus dispatch to disambiguate.
         # NOTE: this reads 4 bytes even for a 2-byte compressed instruction, which

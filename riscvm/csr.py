@@ -37,10 +37,25 @@ class PrivilegeLevel(Enum):
 # and is the only mandatory privilege level for a RISC-V hardware platform.
 
 class CSR(Enum):
-    MEPC = 0x341
+    SSTATUS = 0x100
+    SIE = 0x104
+    STVEC = 0x105
+    SSCRATCH = 0x140
+    SEPC = 0x141
+    SCAUSE = 0x142
+    STVAL = 0x143
+    SIP = 0x144
+    SATP = 0x180
+    MEDELEG = 0x302
+    MIDELEG = 0x303
     MSTATUS = 0x300
     MIE = 0x304
-    SATP = 0x180
+    MTVEC = 0x305
+    MSCRATCH = 0x340
+    MEPC = 0x341
+    MCAUSE = 0x342
+    MTVAL = 0x343
+    MIP = 0x344
 
     def __str__(self):
         return f'{self.name}'
