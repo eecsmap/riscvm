@@ -398,6 +398,9 @@ def actor(instruction, cpu):
         case Mnemonic.BGE:
             if i64(cpu.registers[instruction.rs1].value) >= i64(cpu.registers[instruction.rs2].value):
                 new_pc = cpu.pc.value + instruction.imm_b
+        case Mnemonic.BLT:
+            if i64(cpu.registers[instruction.rs1].value) < i64(cpu.registers[instruction.rs2].value):
+                new_pc = cpu.pc.value + instruction.imm_b
         case Mnemonic.BEQ:
             if cpu.registers[instruction.rs1].value == cpu.registers[instruction.rs2].value:
                 new_pc = cpu.pc.value + instruction.imm_b

@@ -55,6 +55,21 @@ def test_shift_i(rs1_value, instruction, rd_expected):
     cpu.execute(Instruction(instruction))
     assert cpu.registers[1].value == rd_expected
 
+td_B = (
+    # rs1, rs2, rs1_value, rs2_value, instruction, pc_value, pc_expected
+    (11, 12, 0xffff_ffff_ffff_ffff, 1, 0x02c5c063, 0x1000, 0x1020),  # blt a1,a2,+32; -1 < 1 -> taken
+    (11, 12, 5, 3, 0x02c5c063, 0x1000, 0x1004),  # blt a1,a2,+32; 5 < 3 -> not taken
+)
+
+@pytest.mark.parametrize('rs1, rs2, rs1_value, rs2_value, instruction, pc_value, pc_expected', td_B)
+def test_branch(rs1, rs2, rs1_value, rs2_value, instruction, pc_value, pc_expected):
+    cpu = data_loaded()
+    cpu.registers[rs1].value = rs1_value
+    cpu.registers[rs2].value = rs2_value
+    cpu.pc.value = pc_value
+    cpu.execute(Instruction(instruction))
+    assert cpu.pc.value == pc_expected
+
 td_J = (
     # rd, pc_value, instruction, rd_expected, pc_expected
     (1, 0x1000, 0x08c000ef, 0x1004, 0x108c), # JAL    ra, 0x8c
