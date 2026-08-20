@@ -1,5 +1,5 @@
 '''
-Minimal VirtIO MMIO (legacy, version 1) block device.
+Minimal VirtIO MMIO (modern, version 2) block device.
 
 refer:
     https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html
@@ -11,6 +11,13 @@ plus a synchronous QUEUE_NOTIFY handler so a block request (once one is
 ever issued) resolves immediately against an in-memory synthetic disk,
 rather than requiring real interrupt delivery (not modeled by this
 emulator yet).
+
+Version 2 (non-legacy) rather than the legacy version-1 interface:
+current xv6-riscv's own Makefile passes qemu
+`-global virtio-mmio.force-legacy=false`, and virtio_disk_init() checks
+VIRTIO_MMIO_VERSION == 2 -- the driver sets up its queue via QUEUE_READY
+and explicit 64-bit desc/avail/used address registers rather than a
+single legacy "guest page number" register.
 '''
 
 import logging
@@ -26,21 +33,25 @@ class VirtIOBlk:
     VENDOR_ID = 0x00c
     DEVICE_FEATURES = 0x010
     DRIVER_FEATURES = 0x020
-    GUEST_PAGE_SIZE = 0x028
     QUEUE_SEL = 0x030
     QUEUE_NUM_MAX = 0x034
     QUEUE_NUM = 0x038
-    QUEUE_ALIGN = 0x03c
-    QUEUE_PFN = 0x040
+    QUEUE_READY = 0x044
     QUEUE_NOTIFY = 0x050
     INTERRUPT_STATUS = 0x060
     INTERRUPT_ACK = 0x064
     STATUS = 0x070
+    QUEUE_DESC_LOW = 0x080
+    QUEUE_DESC_HIGH = 0x084
+    DRIVER_DESC_LOW = 0x090   # avail ring address
+    DRIVER_DESC_HIGH = 0x094
+    DEVICE_DESC_LOW = 0x0a0   # used ring address
+    DEVICE_DESC_HIGH = 0x0a4
 
     MAGIC = 0x74726976  # 'virt'
     VENDOR = 0x554d4551  # 'QEMU'
     DEVICE_ID_BLK = 2
-    LEGACY_VERSION = 1
+    MMIO_VERSION = 2
 
     # generous upper bound so we accept whatever queue depth the driver
     # asks for; our queue processing isn't backed by a fixed-size ring buffer
@@ -71,7 +82,10 @@ class VirtIOBlk:
         self.driver_features = 0
         self.queue_sel = 0
         self.queue_num = 0
-        self.queue_pfn = 0
+        self.queue_ready = 0
+        self.desc_addr = 0
+        self.avail_addr = 0
+        self.used_addr = 0
         self.status = 0
         self.interrupt_status = 0
         self._last_avail_idx = {}  # queue index -> last processed avail.idx
@@ -85,7 +99,7 @@ class VirtIOBlk:
             case self.MAGIC_VALUE:
                 return self.MAGIC
             case self.VERSION:
-                return self.LEGACY_VERSION
+                return self.MMIO_VERSION
             case self.DEVICE_ID:
                 return self.DEVICE_ID_BLK
             case self.VENDOR_ID:
@@ -94,8 +108,8 @@ class VirtIOBlk:
                 return self.device_features
             case self.QUEUE_NUM_MAX:
                 return self.QUEUE_NUM_MAX_VALUE
-            case self.QUEUE_PFN:
-                return self.queue_pfn
+            case self.QUEUE_READY:
+                return self.queue_ready
             case self.INTERRUPT_STATUS:
                 return self.interrupt_status
             case self.STATUS:
@@ -108,14 +122,24 @@ class VirtIOBlk:
         match address:
             case self.DRIVER_FEATURES:
                 self.driver_features = value
-            case self.GUEST_PAGE_SIZE | self.QUEUE_ALIGN:
-                pass  # legacy alignment hints; we use a fixed PAGE_SIZE layout
             case self.QUEUE_SEL:
                 self.queue_sel = value
             case self.QUEUE_NUM:
                 self.queue_num = value
-            case self.QUEUE_PFN:
-                self.queue_pfn = value
+            case self.QUEUE_READY:
+                self.queue_ready = value
+            case self.QUEUE_DESC_LOW:
+                self.desc_addr = (self.desc_addr & ~0xffffffff) | value
+            case self.QUEUE_DESC_HIGH:
+                self.desc_addr = (self.desc_addr & 0xffffffff) | (value << 32)
+            case self.DRIVER_DESC_LOW:
+                self.avail_addr = (self.avail_addr & ~0xffffffff) | value
+            case self.DRIVER_DESC_HIGH:
+                self.avail_addr = (self.avail_addr & 0xffffffff) | (value << 32)
+            case self.DEVICE_DESC_LOW:
+                self.used_addr = (self.used_addr & ~0xffffffff) | value
+            case self.DEVICE_DESC_HIGH:
+                self.used_addr = (self.used_addr & 0xffffffff) | (value << 32)
             case self.QUEUE_NOTIFY:
                 self._process_queue(value)
             case self.INTERRUPT_ACK:
@@ -124,8 +148,9 @@ class VirtIOBlk:
                 self.status = value
                 if value == 0:
                     # driver-initiated reset
-                    self.queue_pfn = 0
+                    self.queue_ready = 0
                     self.queue_num = 0
+                    self.desc_addr = self.avail_addr = self.used_addr = 0
                     self._last_avail_idx.clear()
             case _:
                 pass
@@ -157,13 +182,12 @@ class VirtIOBlk:
     # -- virtqueue processing --------------------------------------------
 
     def _process_queue(self, queue_idx):
-        if self.queue_pfn == 0 or self.queue_num == 0:
+        if not self.queue_ready or self.queue_num == 0:
             return
 
-        base = self.queue_pfn * PAGE_SIZE
-        desc_base = base
-        avail_base = base + self.queue_num * 16
-        used_base = base + PAGE_SIZE  # legacy layout: used ring starts on the next page
+        desc_base = self.desc_addr
+        avail_base = self.avail_addr
+        used_base = self.used_addr
 
         avail_idx = self._r16(avail_base + 2)
         used_idx = self._r16(used_base + 2)
