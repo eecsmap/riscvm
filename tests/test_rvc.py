@@ -31,3 +31,14 @@ def test_c_alu(instruction, a1_value, a5_value, expected_a1):
     cpu.registers[15].value = a5_value  # a5
     cpu.execute(CInstruction(instruction))
     assert cpu.registers[11].value == expected_a1
+
+def test_c_jalr_jumps_and_saves_return_address():
+    # rv64c.py's own Mnemonic enum had no JALR member at all (referenced
+    # in the decode table's lambda but never defined), so this crashed
+    # with AttributeError rather than the usual "invalid instruction".
+    cpu = make_cpu()
+    cpu.pc.value = 0x1000
+    cpu.registers[10].value = 0x2000  # a0: jump target
+    cpu.execute(CInstruction(0x9502))  # c.jalr a0
+    assert cpu.pc.value == 0x2000
+    assert cpu.registers[1].value == 0x1002  # ra <- return address (pc + 2)
