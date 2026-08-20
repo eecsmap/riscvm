@@ -124,11 +124,17 @@ class XV6(Emulator):
 
     def __init__(self, program, uart_output_file=None, address=0, disk_image=None):
         ram = RAM()
-        ram.data = bytearray(program)
+        # pad up to the next page boundary: a raw `objcopy -O binary` image
+        # doesn't always include .bss (depends on the toolchain/linker
+        # script), so the kernel can genuinely read/write just past the
+        # loaded bytes before reaching the (already-mapped, zero-filled)
+        # stack region below -- that gap needs to be real, zeroed RAM, not
+        # a hole no device covers.
+        stack_begin = ((len(program) + 0x1000 - 1) >> 12 << 12) + address
+        ram.data = bytearray(program) + bytearray(stack_begin - address - len(program))
         stack = RAM(0x8000000) # 128MB for bss, stack, etc.
         bus = Bus()
         # hack: xv6 kernel bin assume to have this place as stack
-        stack_begin = ((len(ram) + 0x1000 - 1) >> 12 << 12) + address
         bus = Bus().add_device(ram, (address, len(ram))).add_device(stack, (stack_begin, len(stack)))
         self.cpu = CPU(bus)
         #self.cpu.pc.value = address
