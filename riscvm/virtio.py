@@ -54,12 +54,19 @@ class VirtIOBlk:
 
     SECTOR_SIZE = 512
 
-    def __init__(self, bus, disk_size=8 * 1024 * 1024):
+    def __init__(self, bus, disk_size=8 * 1024 * 1024, disk_image=None):
         # bus grants access to guest physical memory: the descriptor table,
         # avail/used rings, and the actual read/write buffers all live in RAM
         # the driver allocated, addressed by physical address.
         self.bus = bus
-        self.disk = bytearray(disk_size)  # synthetic, zero-filled: no fs.img backing yet
+        if disk_image is not None:
+            # real xv6 filesystem image (built via mkfs): back reads/writes
+            # with its actual bytes instead of an all-zero synthetic disk
+            self.disk = bytearray(disk_image)
+            if len(self.disk) < disk_size:
+                self.disk.extend(bytes(disk_size - len(self.disk)))
+        else:
+            self.disk = bytearray(disk_size)  # synthetic, zero-filled
         self.device_features = 0
         self.driver_features = 0
         self.queue_sel = 0
