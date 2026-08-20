@@ -431,6 +431,15 @@ class UART:
                     #logger.info(f'*** uart write to\t{regname[self.dlab][address]}({address}): 0x{value:02x} \'{value:c}\'')
                     if self.output:
                         self.output.write(chr(value).encode())
+                        # flush every byte: this is a live console, not a
+                        # batch log -- without this, output sits in the
+                        # default buffered-file write buffer and the reader
+                        # (a human at a terminal, or anything tailing the
+                        # output file) sees nothing until it fills (~8KB)
+                        # or the process exits, even though xv6 is printing
+                        # normally the whole time
+                        if hasattr(self.output, 'flush'):
+                            self.output.flush()
             case 1:
                 if self.dlab:
                     self.dlm = value
