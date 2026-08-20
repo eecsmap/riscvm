@@ -51,6 +51,12 @@ def test_R(rd, rs1, rs2, rs1_value, rs2_value, instruction, rd_expected):
     assert cpu.registers[rd].value == rd_expected
 
 
+def test_fence_i_is_a_noop():
+    cpu = data_loaded()
+    cpu.pc.value = 0x1000
+    cpu.execute(Instruction(0x0000100f))  # fence.i
+    assert cpu.pc.value == 0x1004
+
 def test_sh_stores_halfword():
     ram = RAM(0x100)
     bus = Bus().add_device(ram, (0, len(ram)))

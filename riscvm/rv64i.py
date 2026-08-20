@@ -536,6 +536,8 @@ def actor(instruction, cpu):
             cpu.rd(old_value)
         case Mnemonic.FENCE:
             pass
+        case Mnemonic.FENCE_I:
+            pass  # no I-cache modeled; nothing to synchronize
         
         # 
         case Mnemonic.SRL:
