@@ -183,6 +183,7 @@ class Mnemonic(Enum):
     ADDW = auto()
     SUBW = auto()
     JR = auto()
+    JALR = auto()
     MV = auto()
 
     def __str__(self):
@@ -511,6 +512,13 @@ def actor(instruction, cpu):
             assert instruction.rs1 != 0
             assert instruction.rs2 == 0
             new_pc = cpu.registers[instruction.rs1].value
+        case Mnemonic.JALR:
+            # jalr x1, rs1, 0
+            assert instruction.rs1 != 0
+            assert instruction.rs2 == 0
+            target = cpu.registers[instruction.rs1].value
+            cpu.registers[1].value = cpu.pc.value + instruction.size
+            new_pc = target
         case Mnemonic.MV:
             # add rd, x0, rs2
             assert instruction.rs1 != 0
