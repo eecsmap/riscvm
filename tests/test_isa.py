@@ -42,6 +42,19 @@ def test_R(rd, rs1, rs2, rs1_value, rs2_value, instruction, rd_expected):
     assert cpu.registers[rd].value == rd_expected
 
 
+td_shift_i = (
+    # rs1_value, instruction, rd_expected
+    (0xffff_ffff_ffff_fff0, 0x0040d093, 0x0fff_ffff_ffff_ffff), # srli x1, x1, 4
+    (0xffff_ffff_ffff_fff0, 0x4040d093, 0xffff_ffff_ffff_ffff), # srai x1, x1, 4
+)
+
+@pytest.mark.parametrize('rs1_value, instruction, rd_expected', td_shift_i)
+def test_shift_i(rs1_value, instruction, rd_expected):
+    cpu = data_loaded()
+    cpu.registers[1].value = rs1_value
+    cpu.execute(Instruction(instruction))
+    assert cpu.registers[1].value == rd_expected
+
 td_J = (
     # rd, pc_value, instruction, rd_expected, pc_expected
     (1, 0x1000, 0x08c000ef, 0x1004, 0x108c), # JAL    ra, 0x8c
