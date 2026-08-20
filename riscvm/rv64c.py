@@ -176,8 +176,12 @@ class Mnemonic(Enum):
     SRLI = auto()
     SLLI = auto()
     ADD = auto()
+    SUB = auto()
+    XOR = auto()
     AND = auto()
     OR = auto()
+    ADDW = auto()
+    SUBW = auto()
     JR = auto()
     MV = auto()
 
@@ -207,8 +211,15 @@ MNEMONICS = {
             0b100_1_10: Mnemonic.ANDI,
             0b100_0_11: {
                 # funct2
+                0b00: Mnemonic.SUB,
+                0b01: Mnemonic.XOR,
                 0b10: Mnemonic.OR,
                 0b11: Mnemonic.AND,
+            },
+            0b100_1_11: {
+                # funct2 (RV64C only: word-width ops)
+                0b00: Mnemonic.SUBW,
+                0b01: Mnemonic.ADDW,
             },
         },
         0b101: Mnemonic.J,
@@ -475,12 +486,26 @@ def actor(instruction, cpu):
             assert instruction.rd != 0
             assert instruction.rs2 != 0
             cpu.registers[instruction.rd].value += cpu.registers[instruction.rs2].value
+        case Mnemonic.SUB:
+            # sub rd_, rd_, rs2_
+            cpu.registers[instruction.rs1_prime].value -= cpu.registers[instruction.rs2_prime].value
+        case Mnemonic.XOR:
+            # xor rd_, rd_, rs2_
+            cpu.registers[instruction.rs1_prime].value ^= cpu.registers[instruction.rs2_prime].value
         case Mnemonic.AND:
             # and rd_, rd_, rs2_
             cpu.registers[instruction.rs1_prime].value &= cpu.registers[instruction.rs2_prime].value
         case Mnemonic.OR:
             # or rd_, rd_, rs2_
             cpu.registers[instruction.rs1_prime].value |= cpu.registers[instruction.rs2_prime].value
+        case Mnemonic.SUBW:
+            # subw rd_, rd_, rs2_
+            r = instruction.rs1_prime
+            cpu.registers[r].value = i32(cpu.registers[r].value - cpu.registers[instruction.rs2_prime].value)
+        case Mnemonic.ADDW:
+            # addw rd_, rd_, rs2_
+            r = instruction.rs1_prime
+            cpu.registers[r].value = i32(cpu.registers[r].value + cpu.registers[instruction.rs2_prime].value)
         case Mnemonic.JR:
             # jalr x0, rs1, 0
             assert instruction.rs1 != 0
