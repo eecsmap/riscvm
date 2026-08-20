@@ -22,6 +22,31 @@ To find next instruction to implement, simply run:
 `python3 -m riscvm.emulator tests/xv6-kernel.bin`
 Make sure which ever instruction added is well tested too.
 
+### Boot a real xv6 to an interactive shell
+
+`tests/xv6-kernel-fs.bin` + `tests/fs.img` are a real xv6-riscv kernel and
+filesystem image (built from mit-pdos/xv6-riscv), booted at `0x80000000`.
+Run it in a real terminal (not piped) so keyboard input is wired to the
+emulated UART:
+```
+python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs.bin
+```
+Since this is a pure-Python instruction-level interpreter, boot is slow:
+xv6's `kinit()` zero-fills all of free physical RAM byte-by-byte at boot,
+and that kernel was built to match real hardware's 128MB, which takes on
+the order of *hours* here.
+
+For a fast local demo, use `tests/xv6-kernel-fs-small.bin` instead -- the
+identical kernel source rebuilt with `PHYSTOP` (kernel/memlayout.h)
+reduced from 128MB to 2MB, so there's far less to zero at boot:
+```
+python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs-small.bin
+```
+This reaches the `$ ` shell prompt in a few minutes instead of hours, and
+`ls`/`cat`/etc. all work against the same real `fs.img`. It's not suitable
+for memory-heavy programs like `usertests` (2MB is a tight fit), but it's
+the one to use for interactively poking at the shell.
+
 ## Develop
 
 - Clone this project
