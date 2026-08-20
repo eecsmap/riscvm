@@ -392,9 +392,9 @@ def actor(instruction, cpu):
         case Mnemonic.SLTIU:
             cpu.rd(u64(cpu.registers[instruction.rs1].value) < u64(instruction.imm_i))
         case Mnemonic.SRLI:
-            cpu.rd(u64(cpu.registers[instruction.rs1].value) >> instruction.imm_i)
+            cpu.rd(u64(cpu.registers[instruction.rs1].value) >> instruction.shamt)
         case Mnemonic.SRAI:
-            cpu.rd(i64(cpu.registers[instruction.rs1].value) >> instruction.imm_i)
+            cpu.rd(i64(cpu.registers[instruction.rs1].value) >> instruction.shamt)
         case Mnemonic.BGE:
             if i64(cpu.registers[instruction.rs1].value) >= i64(cpu.registers[instruction.rs2].value):
                 new_pc = cpu.pc.value + instruction.imm_b
