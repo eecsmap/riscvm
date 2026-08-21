@@ -145,7 +145,7 @@ pub fn translate(cpu: &mut Cpu, va: u64, access: Access) -> Result<u64, EmuError
             return error(format!("page fault: page table walk exhausted translating VA 0x{va:x}"));
         }
         let pte_addr = a + vpn[level as usize] * PTE_SIZE;
-        pte = cpu.bus.borrow().read(pte_addr, PTE_SIZE as u8)?; // page table entries live in physical memory: no translation here
+        pte = cpu.bus.borrow_mut().read(pte_addr, PTE_SIZE as u8)?; // page table entries live in physical memory: no translation here
         if pte & PTE_V == 0 {
             return error(format!(
                 "page fault: invalid PTE translating VA 0x{va:x} (level {level}, pte 0x{pte:x} @0x{pte_addr:x})"

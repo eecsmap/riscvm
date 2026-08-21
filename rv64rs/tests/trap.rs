@@ -5,7 +5,7 @@
 //! test_plic_threshold_masks_low_priority) since they don't touch CPU at
 //! all -- same reasoning as rvc.rs owning its own decode/execute tests.
 
-use rv64rs::bus::{Bus, DeviceImpl};
+use rv64rs::bus::Bus;
 use rv64rs::clint::Clint;
 use rv64rs::cpu::Cpu;
 use rv64rs::csr;
@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 fn cpu() -> Cpu {
     let mut bus = Bus::new();
-    bus.add_device(DeviceImpl::Ram(Ram::new(0x10000)), 0).unwrap();
+    bus.set_ram(Ram::new(0x10000), 0).unwrap();
     Cpu::new(Rc::new(RefCell::new(bus)))
 }
 
