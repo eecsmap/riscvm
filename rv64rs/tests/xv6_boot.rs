@@ -69,7 +69,7 @@ fn timer_interrupt_preempts_a_running_loop_via_real_fetch_path() {
     clint.borrow_mut().mtimecmp[0] = 0; // pending as soon as it's ticked even once
     bus.set_clint(clint.clone(), 0x0200_0000).unwrap();
 
-    let mut cpu = Cpu::new(Rc::new(RefCell::new(bus)));
+    let mut cpu = Cpu::new(bus);
     cpu.clint = Some(clint);
     cpu.pc = MAIN_LOOP_ADDR;
     cpu.csrs.insert(csr::MTVEC, TRAP_HANDLER_ADDR);

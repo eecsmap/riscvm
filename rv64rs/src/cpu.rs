@@ -18,17 +18,29 @@
 //! (not cpu.bus.read/write directly) to get translation -- see execute.rs
 //! and rvc.rs's LOAD/STORE/AMO cases.
 //!
-//! Stage 7 changes cpu.bus from an owned Bus to Rc<RefCell<Bus>>: VirtIOBlk
-//! (a device *on* the bus) needs to read/write arbitrary guest memory
+//! Stage 7 changed cpu.bus from an owned Bus to Rc<RefCell<Bus>>: VirtIOBlk
+//! (a device *on* the bus) needed to read/write arbitrary guest memory
 //! (descriptor tables, avail/used rings, data buffers) through that same
-//! bus while processing a queue notification -- exactly what riscvm's
+//! bus while processing a queue notification, by holding its own
+//! Rc<RefCell<Bus>> back-reference -- exactly what riscvm's
 //! VirtIOBlk.__init__(self, bus, ...) does by holding a plain reference to
-//! the same Python `bus` object the CPU also holds. Rc<RefCell<_>> is that
-//! sharing in Rust; this does create a reference cycle (Bus -> its device
-//! list -> VirtIOBlk -> Rc<Bus> -> back to Bus), which is fine for a
-//! single emulation run that exits -- there's no long-lived process context
-//! where that leak would matter.
-
+//! the same Python `bus` object the CPU also holds. That created a
+//! reference cycle (Bus -> its device list -> VirtIOBlk -> Rc<Bus> -> back
+//! to Bus), harmless for a single emulation run that exits, but it also
+//! meant every bus access anywhere (every instruction fetch, most loads/
+//! stores, every page-table-walk step) paid a RefCell borrow-check on top
+//! of the dispatch itself.
+//!
+//! The P7 perf pass (see rv64rs/README.md's "Performance optimization"
+//! section) restructured VirtIOBlk's DMA to take `bus: &mut Bus` as a
+//! parameter at call time instead (threaded through from Bus::write's own
+//! dispatch -- see bus.rs's doc comment), which broke that reentrant-Rc
+//! need entirely. With VirtIOBlk no longer holding a back-reference,
+//! nothing else in the crate needs `Bus` to be shared -- Clint/Uart/Plic
+//! are independently Rc<RefCell<_>> (Cpu holds its own clone of each for
+//! tick()/poll_input()/claimable(), unrelated to Bus's own sharing), so
+//! cpu.bus went back to being a plain owned `Bus`, cutting the RefCell
+//! check out of every single bus access.
 use crate::bus::Bus;
 use crate::clint::Clint;
 use crate::csr;
@@ -58,7 +70,7 @@ const UART_POLL_INTERVAL: i64 = 4096;
 pub struct Cpu {
     pub regs: Registers,
     pub pc: u64,
-    pub bus: Rc<RefCell<Bus>>,
+    pub bus: Bus,
     pub csrs: Csrs,
     pub mode: u8,
     pub clint: Option<Rc<RefCell<Clint>>>,
@@ -69,7 +81,7 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(bus: Rc<RefCell<Bus>>) -> Self {
+    pub fn new(bus: Bus) -> Self {
         // Matches cpu.py's CPU.__init__: mstatus starts with some bits set
         // (notably MPP=11, i.e. M-mode, per the "hopefully we don't use
         // csrs too frequently" comment there), mie has MSIE|MTIE preset.
@@ -108,7 +120,7 @@ impl Cpu {
         trap::check_interrupt(self);
 
         let pa = mmu::translate(self, self.pc, Access::X)?;
-        let word = self.bus.borrow_mut().read(pa, 4)? as u32;
+        let word = self.bus.read(pa, 4)? as u32;
         if word & 0b11 == 0b11 {
             Ok(DecodedInstruction::Full(Instruction::new(word)))
         } else {
@@ -119,13 +131,13 @@ impl Cpu {
     /// Mirrors CPU.read(address, size): translate then read.
     pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
         let pa = mmu::translate(self, address, Access::R)?;
-        self.bus.borrow_mut().read(pa, size)
+        self.bus.read(pa, size)
     }
 
     /// Mirrors CPU.write(address, size, value): translate then write.
     pub fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
         let pa = mmu::translate(self, address, Access::W)?;
-        self.bus.borrow_mut().write(pa, size, value)
+        self.bus.write(pa, size, value)
     }
 
     /// Mirrors CPU.execute(instruction) for a full RV64I instruction.
