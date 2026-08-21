@@ -153,28 +153,63 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             let out = match (instr.funct3, instr.funct7) {
                 (0x0, 0x00) => a.wrapping_add(b),               // ADD
                 (0x0, 0x20) => a.wrapping_sub(b),                // SUB
-                (0x1, _) => a << (b & 0x3f),                     // SLL
-                (0x2, _) => ((a as i64) < (b as i64)) as u64,     // SLT
-                (0x3, _) => (a < b) as u64,                       // SLTU
-                (0x4, _) => a ^ b,                                // XOR
+                (0x1, 0x00) => a << (b & 0x3f),                   // SLL
+                (0x2, 0x00) => ((a as i64) < (b as i64)) as u64,   // SLT
+                (0x3, 0x00) => (a < b) as u64,                     // SLTU
+                (0x4, 0x00) => a ^ b,                              // XOR
                 (0x5, 0x00) => a >> (b & 0x3f),                   // SRL
                 (0x5, 0x20) => ((a as i64) >> (b & 0x3f)) as u64, // SRA
-                (0x6, _) => a | b,                                // OR
-                (0x7, _) => a & b,                                // AND
+                (0x6, 0x00) => a | b,                              // OR
+                (0x7, 0x00) => a & b,                              // AND
+                // RV64M
+                (0x0, 0x01) => a.wrapping_mul(b), // MUL
+                (0x1, 0x01) => (((a as i64 as i128) * (b as i64 as i128)) >> 64) as u64, // MULH
+                (0x2, 0x01) => (((a as i64 as i128) * (b as i128)) >> 64) as u64, // MULHSU
+                (0x3, 0x01) => (((a as u128) * (b as u128)) >> 64) as u64, // MULHU
+                (0x4, 0x01) => match (a as i64, b as i64) {
+                    (_, 0) => u64::MAX,                    // div by zero -> -1
+                    (i64::MIN, -1) => a,                    // overflow -> wraps to dividend
+                    (x, y) => (x / y) as u64,                // DIV (truncated toward zero)
+                },
+                (0x5, 0x01) => a.checked_div(b).unwrap_or(u64::MAX), // DIVU
+                (0x6, 0x01) => match (a as i64, b as i64) {
+                    (_, 0) => a,                            // rem by zero -> dividend
+                    (i64::MIN, -1) => 0,                     // overflow -> 0
+                    (x, y) => (x % y) as u64,                // REM
+                },
+                (0x7, 0x01) => if b == 0 { a } else { a % b }, // REMU
                 _ => return cpu.illegal_instruction(instr),
             };
             cpu.regs.write(instr.rd, out);
             Ok(default_next)
         }
         OPCODE_OP_32 => {
-            let a = cpu.regs.read(instr.rs1) as u32;
-            let b = cpu.regs.read(instr.rs2) as u32;
+            let a32 = cpu.regs.read(instr.rs1) as u32;
+            let b32 = cpu.regs.read(instr.rs2) as u32;
+            // All results here are 32-bit and get sign-extended to 64 below,
+            // including the divide-by-zero case: per spec, DIVW/DIVUW on
+            // division by zero yield -1 sign-extended to the full 64-bit
+            // register, which 0xffff_ffffu32 -> sign-extend naturally gives.
             let out32 = match (instr.funct3, instr.funct7) {
-                (0x0, 0x00) => a.wrapping_add(b),   // ADDW
-                (0x0, 0x20) => a.wrapping_sub(b),    // SUBW
-                (0x1, _) => a << (b & 0x1f),          // SLLW
-                (0x5, 0x00) => a >> (b & 0x1f),       // SRLW
-                (0x5, 0x20) => ((a as i32) >> (b & 0x1f)) as u32, // SRAW
+                (0x0, 0x00) => a32.wrapping_add(b32),   // ADDW
+                (0x0, 0x20) => a32.wrapping_sub(b32),    // SUBW
+                (0x1, _) => a32 << (b32 & 0x1f),          // SLLW
+                (0x5, 0x00) => a32 >> (b32 & 0x1f),       // SRLW
+                (0x5, 0x20) => ((a32 as i32) >> (b32 & 0x1f)) as u32, // SRAW
+                // RV64M word variants
+                (0x0, 0x01) => a32.wrapping_mul(b32), // MULW
+                (0x4, 0x01) => match (a32 as i32, b32 as i32) {
+                    (_, 0) => 0xffff_ffff,          // div by zero -> -1
+                    (i32::MIN, -1) => a32,            // overflow -> wraps to dividend
+                    (x, y) => (x / y) as u32,
+                }, // DIVW
+                (0x5, 0x01) => a32.checked_div(b32).unwrap_or(0xffff_ffff), // DIVUW
+                (0x6, 0x01) => match (a32 as i32, b32 as i32) {
+                    (_, 0) => a32,                    // rem by zero -> dividend
+                    (i32::MIN, -1) => 0,               // overflow -> 0
+                    (x, y) => (x % y) as u32,
+                }, // REMW
+                (0x7, 0x01) => if b32 == 0 { a32 } else { a32 % b32 }, // REMUW
                 _ => return cpu.illegal_instruction(instr),
             };
             cpu.regs.write(instr.rd, (out32 as i32) as i64 as u64);

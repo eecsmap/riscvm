@@ -11,3 +11,4 @@ pub mod error;
 pub mod execute;
 pub mod ram;
 pub mod register;
+pub mod rvc;

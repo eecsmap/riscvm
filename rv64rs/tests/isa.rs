@@ -185,6 +185,45 @@ fn loads() {
     }
 }
 
+// --- stage 3: td_R's RV64M rows (deferred from stage 1) ---
+#[test]
+fn rv64m_extension() {
+    let cases: [(u64, u64, u32, u64); 18] = [
+        (2, 3, 0x02B50533, 6),                                                      // mul a0,a0,a1
+        (0x8000_0000_0000_0000, 1, 0x02B50533, 0x8000_0000_0000_0000),               // mul
+        (0x8000_0000_0000_0001, 2, 0x02B50533, 2),                                    // mul
+        (7, 2, 0x02b54533, 3),                                                         // div 7/2 -> 3
+        (0xffff_ffff_ffff_fff9, 2, 0x02b54533, 0xffff_ffff_ffff_fffd),                 // div -7/2 -> -3
+        (0x8000_0000_0000_0000, 0xffff_ffff_ffff_ffff, 0x02b54533, 0x8000_0000_0000_0000), // div overflow -> dividend
+        (5, 0, 0x02b54533, 0xffff_ffff_ffff_ffff),                                     // div by zero -> -1
+        (7, 2, 0x02b55533, 3),                                                          // divu
+        (5, 0, 0x02b55533, 0xffff_ffff_ffff_ffff),                                     // divu by zero -> all ones
+        (0xffff_ffff_ffff_fff9, 2, 0x02b56533, 0xffff_ffff_ffff_ffff),                  // rem -7%2 -> -1
+        (0x8000_0000_0000_0000, 0xffff_ffff_ffff_ffff, 0x02b56533, 0),                  // rem overflow -> 0
+        (5, 0, 0x02b56533, 5),                                                          // rem by zero -> dividend
+        (7, 2, 0x02b57533, 1),                                                          // remu
+        (5, 0, 0x02b57533, 5),                                                          // remu by zero -> dividend
+        (0xffff_ffff_ffff_fffe, 0x4000_0000_0000_0000, 0x02b51533, 0xffff_ffff_ffff_ffff), // mulh
+        (3, 4, 0x02b5053b, 12),                                                          // mulw
+        (7, 2, 0x02b5453b, 3),                                                           // divw
+        (7, 2, 0x02b5653b, 1),                                                           // remw
+    ];
+    for (rs1v, rs2v, word, expected) in cases.iter() {
+        let mut c = cpu();
+        c.regs.write(10, *rs1v);
+        c.regs.write(11, *rs2v);
+        c.execute(&Instruction::new(*word)).unwrap();
+        assert_eq!(c.regs.read(10), *expected, "word=0x{word:x}");
+    }
+
+    // remu a4,a1,a2 -- the exact instruction that first exposed this gap in riscvm
+    let mut c = cpu();
+    c.regs.write(11, 7);
+    c.regs.write(12, 2);
+    c.execute(&Instruction::new(0x02c5f733)).unwrap();
+    assert_eq!(c.regs.read(14), 1);
+}
+
 // --- stage 2: test_sh_stores_halfword ---
 #[test]
 fn sh_stores_halfword() {
