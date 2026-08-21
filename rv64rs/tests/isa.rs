@@ -1,19 +1,37 @@
-//! Ports the stage-1-scope (ALU + control flow, no memory) cases from
-//! tests/test_isa.py verbatim -- same instruction words, same expected
-//! values, filtered down to what stage 1 covers:
-//!   - td_I: only the ADDI row (LB/LH/LBU/LHU need RAM -- stage 2)
+//! Ports test cases from tests/test_isa.py verbatim -- same instruction
+//! words, same expected values.
+//!
+//! Stage 1 (ALU + control flow, no memory):
+//!   - td_I: only the ADDI row
 //!   - td_R: NOT(XORI)/SLT/SLTU/XOR/ADDW/SUBW rows (MUL/DIV/REM rows are
 //!     the RV64M extension -- stage 3)
-//!   - td_shift_i, td_B, td_J: all ported, all pure ALU/control-flow
+//!   - td_shift_i, td_B, td_J: all ported
 //!   - test_fence_i_is_a_noop: ported
-//!   - test_sh_stores_halfword: NOT ported (needs RAM+STORE -- stage 2)
+//!
+//! Stage 2 (this stage, MEM):
+//!   - td_I's LB/LH/LBU/LHU rows
+//!   - test_sh_stores_halfword
 
 use rv64rs::bus::Bus;
 use rv64rs::cpu::Cpu;
 use rv64rs::decode::Instruction;
+use rv64rs::ram::Ram;
 
 fn cpu() -> Cpu {
     Cpu::new(Bus::new())
+}
+
+/// Mirrors test_isa.py's data_loaded(hexdata): a CPU with a RAM device
+/// mapped at address 0 holding `data`.
+fn cpu_with_ram(hex_data: &str) -> Cpu {
+    let bytes: Vec<u8> = (0..hex_data.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex_data[i..i + 2], 16).unwrap())
+        .collect();
+    let ram = Ram::with_content(bytes.len() as u64, &bytes);
+    let mut bus = Bus::new();
+    bus.add_device(Box::new(ram), 0).unwrap();
+    Cpu::new(bus)
 }
 
 // --- td_I: addi x1, x0, 42 ---
@@ -149,4 +167,33 @@ fn fence_i_is_a_noop() {
     c.pc = 0x1000;
     c.execute(&Instruction::new(0x0000100f)).unwrap();
     assert_eq!(c.pc, 0x1004);
+}
+
+// --- stage 2: td_I's load rows ---
+#[test]
+fn loads() {
+    let cases: [(&str, u32, u64); 4] = [
+        ("ff", 0x00000083, 0xffff_ffff_ffff_ffff),   // lb x1, 0(x0)
+        ("42ff", 0x00001083, 0xffff_ffff_ffff_ff42), // lh x1, 0(x0)
+        ("ff", 0x00004083, 0xff),                     // lbu x1, 0(x0)
+        ("42ff", 0x00005083, 0xff42),                 // lhu x1, 0(x0)
+    ];
+    for (data, word, expected) in cases {
+        let mut c = cpu_with_ram(data);
+        c.execute(&Instruction::new(word)).unwrap();
+        assert_eq!(c.regs.read(1), expected, "word=0x{word:x}");
+    }
+}
+
+// --- stage 2: test_sh_stores_halfword ---
+#[test]
+fn sh_stores_halfword() {
+    let ram = Ram::new(0x100);
+    let mut bus = Bus::new();
+    bus.add_device(Box::new(ram), 0).unwrap();
+    let mut c = Cpu::new(bus);
+    c.regs.write(10, 0x20);   // a0: base address
+    c.regs.write(11, 0xbeef); // a1: value to store
+    c.execute(&Instruction::new(0xb51223)).unwrap(); // sh a1, 4(a0)
+    assert_eq!(c.bus.read(0x24, 2).unwrap(), 0xbeef);
 }

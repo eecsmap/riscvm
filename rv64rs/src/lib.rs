@@ -2,6 +2,7 @@
 //! Python package (riscvm/*.py) file-for-file where practical; see
 //! PLAN.md for the staged implementation plan this follows.
 
+pub mod asm;
 pub mod bus;
 pub mod cpu;
 pub mod decode;

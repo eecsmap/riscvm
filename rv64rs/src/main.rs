@@ -1,9 +1,10 @@
-//! CLI entry point. Stage 1 scope: a `fib` subcommand reproducing
-//! tests/test_emu.py::test_fib end-to-end (load tests/fib.bin at 0x1000,
-//! a0=80, run until the program's final JALR to ra=0 hits unmapped memory,
-//! check a0). A generic run mode is also provided for poking at other
-//! stage-1-only (ALU/branch/jump, no memory) programs.
+//! CLI entry point.
+//! - `fib` (stage 1): reproduces tests/test_emu.py::test_fib end-to-end.
+//! - `stack-demo` (stage 2): runs a hand-assembled program that actually
+//!   uses the stack region via LOAD/STORE.
+//! - anything else: generic run mode for poking at other programs.
 
+use rv64rs::asm::stack_demo_program;
 use rv64rs::emulator::Emulator;
 use std::env;
 
@@ -33,6 +34,21 @@ fn run_fib(path: &str) {
     println!("a0 = fib(80) = {a0} (expected {EXPECTED}, match = {})", a0 == EXPECTED);
 }
 
+fn run_stack_demo() {
+    let code = stack_demo_program();
+    let mut emu = Emulator::new(&code, 0x1000).expect("failed to set up emulator");
+    let err = emu.run();
+
+    let a0 = emu.cpu.regs.read(10);
+    println!("stopped: {err}");
+    println!("a0 = {a0} (expected 43, match = {})", a0 == 43);
+    println!(
+        "stack[0x3000..0x3008) = {}, {}",
+        emu.cpu.bus.read(0x3000, 4).unwrap(),
+        emu.cpu.bus.read(0x3004, 4).unwrap()
+    );
+}
+
 fn run_generic(path: &str, address: u64) {
     let code = std::fs::read(path).expect("failed to read program");
     let mut emu = Emulator::new(&code, address).expect("failed to set up emulator");
@@ -48,6 +64,7 @@ fn main() {
             let path = args.get(2).map(String::as_str).unwrap_or("../tests/fib.bin");
             run_fib(path);
         }
+        Some("stack-demo") => run_stack_demo(),
         Some(path) => {
             let address = args
                 .get(2)

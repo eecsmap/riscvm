@@ -1,27 +1,43 @@
 //! Corresponds to the RV64I execute portion of riscvm/rv64i.py.
 //!
-//! Stage 1 scope only: OP-IMM / OP (+ their -32 W-variants), LUI, AUIPC,
-//! BRANCH, JAL, JALR, and MISC-MEM/FENCE as a no-op -- pure register
-//! compute and control flow, no bus access. LOAD/STORE (stage 2) and
-//! SYSTEM/ECALL (stage 4) deliberately return "not implemented at this
-//! stage" rather than silently doing nothing, so the staging stays honest
-//! (mirrors how riscvm itself grew: an unimplemented opcode is a loud
-//! InternalException, not silent wrong behavior).
+//! Stage 1 added OP-IMM / OP (+ their -32 W-variants), LUI, AUIPC, BRANCH,
+//! JAL, JALR, and MISC-MEM/FENCE as a no-op -- pure register compute and
+//! control flow, no bus access.
+//!
+//! Stage 2 (this stage) adds LOAD/STORE, going through cpu.bus directly
+//! (no MMU translation yet -- that's stage 6, same as riscvm's cpu.py
+//! before mmu.py existed).
+//!
+//! SYSTEM/ECALL (stage 4) still deliberately returns "not implemented at
+//! this stage" rather than silently doing nothing, so the staging stays
+//! honest (mirrors how riscvm itself grew: an unimplemented opcode is a
+//! loud InternalException, not silent wrong behavior).
 
 use crate::cpu::Cpu;
 use crate::decode::Instruction;
 use crate::error::EmuError;
 
-const OPCODE_LUI: u32 = 0x37;
+const OPCODE_LOAD: u32 = 0x03;
+const OPCODE_MISC_MEM: u32 = 0x0f;
+const OPCODE_STORE: u32 = 0x23;
 const OPCODE_AUIPC: u32 = 0x17;
-const OPCODE_JAL: u32 = 0x6f;
-const OPCODE_JALR: u32 = 0x67;
-const OPCODE_BRANCH: u32 = 0x63;
 const OPCODE_OP_IMM: u32 = 0x13;
 const OPCODE_OP_IMM_32: u32 = 0x1b;
+const OPCODE_LUI: u32 = 0x37;
 const OPCODE_OP: u32 = 0x33;
 const OPCODE_OP_32: u32 = 0x3b;
-const OPCODE_MISC_MEM: u32 = 0x0f;
+const OPCODE_BRANCH: u32 = 0x63;
+const OPCODE_JALR: u32 = 0x67;
+const OPCODE_JAL: u32 = 0x6f;
+
+/// Sign-extend the low `bits` bits of a value already sitting in a u64
+/// (used for LB/LH/LW, whose loaded width is narrower than the 64-bit
+/// register they land in).
+#[inline(always)]
+fn sext64(value: u64, bits: u32) -> u64 {
+    let shift = 64 - bits;
+    (((value << shift) as i64) >> shift) as u64
+}
 
 /// Executes one decoded instruction against `cpu`, returning the next pc
 /// (the caller, Cpu::execute, commits it). Errors on anything outside this
@@ -31,6 +47,33 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
     let default_next = pc.wrapping_add(4);
 
     match instr.opcode {
+        OPCODE_LOAD => {
+            let addr = cpu.regs.read(instr.rs1).wrapping_add(instr.imm_i as u64);
+            let out = match instr.funct3 {
+                0x0 => sext64(cpu.bus.read(addr, 1)?, 8),   // LB
+                0x1 => sext64(cpu.bus.read(addr, 2)?, 16),  // LH
+                0x2 => sext64(cpu.bus.read(addr, 4)?, 32),  // LW
+                0x3 => cpu.bus.read(addr, 8)?,               // LD
+                0x4 => cpu.bus.read(addr, 1)?,                // LBU
+                0x5 => cpu.bus.read(addr, 2)?,                // LHU
+                0x6 => cpu.bus.read(addr, 4)?,                // LWU
+                _ => return cpu.illegal_instruction(instr),
+            };
+            cpu.regs.write(instr.rd, out);
+            Ok(default_next)
+        }
+        OPCODE_STORE => {
+            let addr = cpu.regs.read(instr.rs1).wrapping_add(instr.imm_s as u64);
+            let value = cpu.regs.read(instr.rs2);
+            match instr.funct3 {
+                0x0 => cpu.bus.write(addr, 1, value)?, // SB
+                0x1 => cpu.bus.write(addr, 2, value)?, // SH
+                0x2 => cpu.bus.write(addr, 4, value)?, // SW
+                0x3 => cpu.bus.write(addr, 8, value)?, // SD
+                _ => return cpu.illegal_instruction(instr),
+            };
+            Ok(default_next)
+        }
         OPCODE_LUI => {
             cpu.regs.write(instr.rd, instr.imm_u as u64);
             Ok(default_next)
