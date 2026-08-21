@@ -4,10 +4,10 @@
 //! right after it for stack/bss -- no devices, matching emulator.py's
 //! plain Emulator.__init__.
 //!
-//! `Xv6Emulator` (this stage) additionally wires up CLINT, UART, and PLIC
-//! (VirtIO is stage 7) and starts execution at a tiny bootloader at 0x1000
-//! that jumps into the kernel at `address`, matching XV6.__init__ exactly
-//! -- same bootloader bytes, same MMIO addresses.
+//! `Xv6Emulator` additionally wires up CLINT, UART, PLIC, and (stage 7,
+//! this stage) VirtIOBlk, and starts execution at a tiny bootloader at
+//! 0x1000 that jumps into the kernel at `address`, matching XV6.__init__
+//! exactly -- same bootloader bytes, same MMIO addresses.
 
 use crate::bus::{Bus, Device, SharedDevice};
 use crate::clint::Clint;
@@ -16,6 +16,7 @@ use crate::error::EmuError;
 use crate::plic::Plic;
 use crate::ram::Ram;
 use crate::uart::Uart;
+use crate::virtio::VirtIOBlk;
 use std::cell::RefCell;
 use std::io::{Read, Write};
 use std::rc::Rc;
@@ -37,7 +38,7 @@ impl Emulator {
         bus.add_device(Box::new(ram), address)?;
         bus.add_device(Box::new(stack), stack_begin)?;
 
-        let mut cpu = Cpu::new(bus);
+        let mut cpu = Cpu::new(Rc::new(RefCell::new(bus)));
         cpu.pc = address;
         Ok(Emulator { cpu })
     }
@@ -59,6 +60,9 @@ const CLINT_SIZE: u64 = 0x1_0000;
 const UART_BASE: u64 = 0x1000_0000;
 const UART_SIZE: u64 = 0x100;
 const UART0_IRQ: u32 = 10;
+const VIRTIO_DISK_BASE: u64 = 0x1000_1000;
+const VIRTIO_DISK_SIZE_DEFAULT: u64 = 8 * 1024 * 1024;
+const VIRTIO0_IRQ: u32 = 1;
 const PLIC_BASE: u64 = 0x0C00_0000;
 const PLIC_SIZE: u64 = 0x0FFF_FFFF - PLIC_BASE + 1;
 const BOOTLOADER_ADDR: u64 = 0x1000;
@@ -76,6 +80,7 @@ impl Xv6Emulator {
         address: u64,
         uart_output: Option<Box<dyn Write>>,
         uart_input: Option<Box<dyn Read>>,
+        disk_image: Option<Vec<u8>>,
     ) -> Result<Self, EmuError> {
         // pad up to the next page boundary: a raw `objcopy -O binary` image
         // doesn't always include .bss, so the kernel can genuinely read/
@@ -95,15 +100,27 @@ impl Xv6Emulator {
         let uart = Rc::new(RefCell::new(Uart::new(UART_SIZE, uart_output, uart_input)));
         bus.add_device(Box::new(SharedDevice(uart.clone())), UART_BASE)?;
 
+        // The bus needs to be shared (Rc<RefCell<_>>) from here on: VirtIOBlk
+        // reads/writes arbitrary guest memory (descriptor tables, rings,
+        // buffers) through the very same bus it's registered on -- see
+        // cpu.rs's doc comment on why Cpu.bus is Rc<RefCell<Bus>>.
+        let bus = Rc::new(RefCell::new(bus));
+
+        let virtio = VirtIOBlk::new(bus.clone(), VIRTIO_DISK_SIZE_DEFAULT, disk_image);
+        let virtio = Rc::new(RefCell::new(virtio));
+        bus.borrow_mut().add_device(Box::new(SharedDevice(virtio.clone())), VIRTIO_DISK_BASE)?;
+
         let mut plic = Plic::new(PLIC_SIZE);
         let uart_for_plic = uart.clone();
         plic.register_irq(UART0_IRQ, move || uart_for_plic.borrow().interrupt_status());
+        let virtio_for_plic = virtio.clone();
+        plic.register_irq(VIRTIO0_IRQ, move || virtio_for_plic.borrow().interrupt_status);
         let plic = Rc::new(RefCell::new(plic));
-        bus.add_device(Box::new(SharedDevice(plic.clone())), PLIC_BASE)?;
+        bus.borrow_mut().add_device(Box::new(SharedDevice(plic.clone())), PLIC_BASE)?;
 
         let bootloader_bytes = hex_decode(BOOTLOADER_HEX);
         let bootloader = Ram::with_content(bootloader_bytes.len() as u64, &bootloader_bytes);
-        bus.add_device(Box::new(bootloader), BOOTLOADER_ADDR)?;
+        bus.borrow_mut().add_device(Box::new(bootloader), BOOTLOADER_ADDR)?;
 
         let mut cpu = Cpu::new(bus);
         cpu.clint = Some(clint);

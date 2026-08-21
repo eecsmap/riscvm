@@ -18,3 +18,4 @@ pub mod register;
 pub mod rvc;
 pub mod trap;
 pub mod uart;
+pub mod virtio;

@@ -46,14 +46,15 @@ fn run_stack_demo() {
     println!("a0 = {a0} (expected 43, match = {})", a0 == 43);
     println!(
         "stack[0x3000..0x3008) = {}, {}",
-        emu.cpu.bus.read(0x3000, 4).unwrap(),
-        emu.cpu.bus.read(0x3004, 4).unwrap()
+        emu.cpu.bus.borrow().read(0x3000, 4).unwrap(),
+        emu.cpu.bus.borrow().read(0x3004, 4).unwrap()
     );
 }
 
-fn run_xv6_boot(path: &str, address: u64, limit: u64) {
+fn run_xv6_boot(path: &str, address: u64, limit: u64, fs_image: Option<&str>) {
     let code = std::fs::read(path).expect("failed to read kernel image");
-    let mut emu = Xv6Emulator::new(&code, address, Some(Box::new(std::io::stdout())), None)
+    let disk_image = fs_image.map(|p| std::fs::read(p).expect("failed to read fs image"));
+    let mut emu = Xv6Emulator::new(&code, address, Some(Box::new(std::io::stdout())), None, disk_image)
         .expect("failed to set up XV6 emulator");
 
     let mut count: u64 = 0;
@@ -94,7 +95,8 @@ fn main() {
                 .map(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).unwrap())
                 .unwrap_or(0x8000_0000);
             let limit = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
-            run_xv6_boot(path, address, limit);
+            let fs_image = args.get(5).map(String::as_str);
+            run_xv6_boot(path, address, limit, fs_image);
         }
         Some(path) => {
             let address = args

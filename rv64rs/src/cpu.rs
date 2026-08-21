@@ -17,6 +17,17 @@
 //! translates the fetch address too. Instructions must go through these
 //! (not cpu.bus.read/write directly) to get translation -- see execute.rs
 //! and rvc.rs's LOAD/STORE/AMO cases.
+//!
+//! Stage 7 changes cpu.bus from an owned Bus to Rc<RefCell<Bus>>: VirtIOBlk
+//! (a device *on* the bus) needs to read/write arbitrary guest memory
+//! (descriptor tables, avail/used rings, data buffers) through that same
+//! bus while processing a queue notification -- exactly what riscvm's
+//! VirtIOBlk.__init__(self, bus, ...) does by holding a plain reference to
+//! the same Python `bus` object the CPU also holds. Rc<RefCell<_>> is that
+//! sharing in Rust; this does create a reference cycle (Bus -> its device
+//! list -> VirtIOBlk -> Rc<Bus> -> back to Bus), which is fine for a
+//! single emulation run that exits -- there's no long-lived process context
+//! where that leak would matter.
 
 use crate::bus::Bus;
 use crate::clint::Clint;
@@ -47,7 +58,7 @@ const UART_POLL_INTERVAL: i64 = 4096;
 pub struct Cpu {
     pub regs: Registers,
     pub pc: u64,
-    pub bus: Bus,
+    pub bus: Rc<RefCell<Bus>>,
     pub csrs: HashMap<u32, u64>,
     pub mode: u8,
     pub clint: Option<Rc<RefCell<Clint>>>,
@@ -57,7 +68,7 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(bus: Bus) -> Self {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> Self {
         // Matches cpu.py's CPU.__init__: mstatus starts with some bits set
         // (notably MPP=11, i.e. M-mode, per the "hopefully we don't use
         // csrs too frequently" comment there), mie has MSIE|MTIE preset.
@@ -95,7 +106,7 @@ impl Cpu {
         trap::check_interrupt(self);
 
         let pa = mmu::translate(self, self.pc, Access::X)?;
-        let word = self.bus.read(pa, 4)? as u32;
+        let word = self.bus.borrow().read(pa, 4)? as u32;
         if word & 0b11 == 0b11 {
             Ok(DecodedInstruction::Full(Instruction::new(word)))
         } else {
@@ -106,13 +117,13 @@ impl Cpu {
     /// Mirrors CPU.read(address, size): translate then read.
     pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
         let pa = mmu::translate(self, address, Access::R)?;
-        self.bus.read(pa, size)
+        self.bus.borrow().read(pa, size)
     }
 
     /// Mirrors CPU.write(address, size, value): translate then write.
     pub fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
         let pa = mmu::translate(self, address, Access::W)?;
-        self.bus.write(pa, size, value)
+        self.bus.borrow().write(pa, size, value)
     }
 
     /// Mirrors CPU.execute(instruction) for a full RV64I instruction.

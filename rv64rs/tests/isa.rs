@@ -16,9 +16,11 @@ use rv64rs::bus::Bus;
 use rv64rs::cpu::Cpu;
 use rv64rs::decode::Instruction;
 use rv64rs::ram::Ram;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn cpu() -> Cpu {
-    Cpu::new(Bus::new())
+    Cpu::new(Rc::new(RefCell::new(Bus::new())))
 }
 
 /// Mirrors test_isa.py's data_loaded(hexdata): a CPU with a RAM device
@@ -31,7 +33,7 @@ fn cpu_with_ram(hex_data: &str) -> Cpu {
     let ram = Ram::with_content(bytes.len() as u64, &bytes);
     let mut bus = Bus::new();
     bus.add_device(Box::new(ram), 0).unwrap();
-    Cpu::new(bus)
+    Cpu::new(Rc::new(RefCell::new(bus)))
 }
 
 // --- td_I: addi x1, x0, 42 ---
@@ -230,9 +232,9 @@ fn sh_stores_halfword() {
     let ram = Ram::new(0x100);
     let mut bus = Bus::new();
     bus.add_device(Box::new(ram), 0).unwrap();
-    let mut c = Cpu::new(bus);
+    let mut c = Cpu::new(Rc::new(RefCell::new(bus)));
     c.regs.write(10, 0x20);   // a0: base address
     c.regs.write(11, 0xbeef); // a1: value to store
     c.execute(&Instruction::new(0xb51223)).unwrap(); // sh a1, 4(a0)
-    assert_eq!(c.bus.read(0x24, 2).unwrap(), 0xbeef);
+    assert_eq!(c.bus.borrow().read(0x24, 2).unwrap(), 0xbeef);
 }

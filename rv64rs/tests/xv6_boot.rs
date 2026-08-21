@@ -34,7 +34,7 @@ fn boots_and_prints_xv6_kernel_is_booting() {
         }
     }
 
-    let mut emu = Xv6Emulator::new(&code, 0x8000_0000, Some(Box::new(Sink(output.clone()))), None).unwrap();
+    let mut emu = Xv6Emulator::new(&code, 0x8000_0000, Some(Box::new(Sink(output.clone()))), None, None).unwrap();
     for _ in 0..5_000_000 {
         if emu.cpu.step().is_err() {
             break;
@@ -69,7 +69,7 @@ fn timer_interrupt_preempts_a_running_loop_via_real_fetch_path() {
     clint.borrow_mut().mtimecmp[0] = 0; // pending as soon as it's ticked even once
     bus.add_device(Box::new(SharedDevice(clint.clone())), 0x0200_0000).unwrap();
 
-    let mut cpu = Cpu::new(bus);
+    let mut cpu = Cpu::new(Rc::new(RefCell::new(bus)));
     cpu.clint = Some(clint);
     cpu.pc = MAIN_LOOP_ADDR;
     cpu.csrs.insert(csr::MTVEC, TRAP_HANDLER_ADDR);

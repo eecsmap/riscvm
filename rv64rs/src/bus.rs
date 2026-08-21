@@ -139,9 +139,17 @@ impl Default for RangeManager {
     }
 }
 
+/// Each slot gets its own RefCell (rather than one RefCell around the whole
+/// Bus) so that read()/write() only need `&self`: a device like VirtIOBlk
+/// that re-enters the bus mid-dispatch (to read/write guest RAM while
+/// processing a queue notification) borrows a *different* slot's RefCell
+/// than the one currently held for its own dispatch, so it doesn't
+/// conflict. One shared RefCell<Bus> would panic here (a device can't
+/// re-borrow the very RefCell that's already exclusively borrowed to call
+/// it) -- this bit us during stage 7's VirtIOBlk before add_device().
 pub struct Bus {
     range_manager: RangeManager,
-    devices: Vec<(Range, Box<dyn Device>)>,
+    devices: Vec<(Range, RefCell<Box<dyn Device>>)>,
 }
 
 impl Bus {
@@ -152,29 +160,29 @@ impl Bus {
     pub fn add_device(&mut self, device: Box<dyn Device>, start: u64) -> Result<(), EmuError> {
         let range = Range { start, size: device.len() };
         self.range_manager.add_range(range)?;
-        self.devices.push((range, device));
+        self.devices.push((range, RefCell::new(device)));
         Ok(())
     }
 
-    fn find_device_mut(&mut self, range: Range) -> &mut (Range, Box<dyn Device>) {
-        self.devices
-            .iter_mut()
+    fn find_device(&self, range: Range) -> &RefCell<Box<dyn Device>> {
+        &self
+            .devices
+            .iter()
             .find(|(r, _)| *r == range)
             .expect("range_manager returned a range with no matching device")
+            .1
     }
 
-    pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
+    pub fn read(&self, address: u64, size: u8) -> Result<u64, EmuError> {
         let range = self.range_manager.get_range(address, size as u64)?;
-        let (r, device) = self.find_device_mut(range);
-        let start = r.start;
-        device.read(address - start, size)
+        let device = self.find_device(range);
+        device.borrow_mut().read(address - range.start, size)
     }
 
-    pub fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
+    pub fn write(&self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
         let range = self.range_manager.get_range(address, size as u64)?;
-        let (r, device) = self.find_device_mut(range);
-        let start = r.start;
-        device.write(address - start, size, value)
+        let device = self.find_device(range);
+        device.borrow_mut().write(address - range.start, size, value)
     }
 }
 
@@ -191,7 +199,7 @@ mod tests {
     // Mirrors tests/test_bus.py::test_invalid_address
     #[test]
     fn test_invalid_address() {
-        let mut bus = Bus::new();
+        let bus = Bus::new();
         assert!(bus.read(0, 4).is_err());
     }
 }
