@@ -1,1 +1,4 @@
 /target
+*.trace/
+*.dSYM/
+profile_export.xml

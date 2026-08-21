@@ -83,13 +83,13 @@ fn timer_interrupt_preempts_a_running_loop_via_real_fetch_path() {
     cpu.step().unwrap();
     assert_eq!(cpu.pc, TRAP_HANDLER_ADDR, "should have landed in the trap handler, not the main loop");
     assert_eq!(cpu.mode, csr::PRIV_M);
-    assert_eq!(cpu.csrs[&csr::MCAUSE], 7 | (1 << 63)); // machine timer interrupt
-    assert_eq!(cpu.csrs[&csr::MEPC], MAIN_LOOP_ADDR); // trap entry saved where we were interrupted
+    assert_eq!(cpu.csrs[csr::MCAUSE], 7 | (1 << 63)); // machine timer interrupt
+    assert_eq!(cpu.csrs[csr::MEPC], MAIN_LOOP_ADDR); // trap entry saved where we were interrupted
     // Entering the trap must have cleared MSTATUS.MIE (into MPIE) --
     // otherwise the same interrupt fires again on every single instruction
     // forever instead of being taken exactly once.
-    assert_eq!(cpu.csrs[&csr::MSTATUS] & MSTATUS_MIE, 0);
-    assert_ne!(cpu.csrs[&csr::MSTATUS] & MSTATUS_MPIE, 0);
+    assert_eq!(cpu.csrs[csr::MSTATUS] & MSTATUS_MIE, 0);
+    assert_ne!(cpu.csrs[csr::MSTATUS] & MSTATUS_MPIE, 0);
 
     // Subsequent steps: MIE is now clear, so check_interrupt() must not
     // re-fire even though CLINT's pending() is still true -- the CPU just

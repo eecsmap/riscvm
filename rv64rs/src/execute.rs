@@ -304,7 +304,7 @@ fn execute_system(instr: &Instruction, cpu: &mut Cpu, default_next: u64) -> Resu
             }
             (0b0001000, 0b00010) => {
                 // SRET
-                let mut sstatus = cpu.csrs.get(&crate::csr::MSTATUS).copied().unwrap_or(0); // sstatus aliases mstatus
+                let mut sstatus = cpu.csrs.get(crate::csr::MSTATUS); // sstatus aliases mstatus
                 let spie = sstatus & trap::MSTATUS_SPIE != 0;
                 let spp = (sstatus & trap::MSTATUS_SPP) >> 8;
                 sstatus = (sstatus & !trap::MSTATUS_SIE) | if spie { trap::MSTATUS_SIE } else { 0 };
@@ -312,13 +312,13 @@ fn execute_system(instr: &Instruction, cpu: &mut Cpu, default_next: u64) -> Resu
                 sstatus &= !trap::MSTATUS_SPP;
                 cpu.csrs.insert(crate::csr::MSTATUS, sstatus);
                 cpu.mode = spp as u8;
-                Ok(cpu.csrs.get(&crate::csr::SEPC).copied().unwrap_or(0))
+                Ok(cpu.csrs.get(crate::csr::SEPC))
             }
             (0b0001000, 0b00101) => Ok(default_next), // WFI: interrupts are checked every instruction anyway
             (0b0001001, _) => Ok(default_next),        // SFENCE.VMA: no-op until the MMU exists
             (0b0011000, _) => {
                 // MRET
-                let mut mstatus = cpu.csrs.get(&crate::csr::MSTATUS).copied().unwrap_or(0);
+                let mut mstatus = cpu.csrs.get(crate::csr::MSTATUS);
                 let mpie = mstatus & trap::MSTATUS_MPIE != 0;
                 let mpp = (mstatus & trap::MSTATUS_MPP) >> 11;
                 mstatus = (mstatus & !trap::MSTATUS_MIE) | if mpie { trap::MSTATUS_MIE } else { 0 };
@@ -326,7 +326,7 @@ fn execute_system(instr: &Instruction, cpu: &mut Cpu, default_next: u64) -> Resu
                 mstatus &= !trap::MSTATUS_MPP;
                 cpu.csrs.insert(crate::csr::MSTATUS, mstatus);
                 cpu.mode = mpp as u8;
-                Ok(cpu.csrs.get(&crate::csr::MEPC).copied().unwrap_or(0))
+                Ok(cpu.csrs.get(crate::csr::MEPC))
             }
             _ => cpu.illegal_instruction(instr), // includes EBREAK -- unimplemented in riscvm too
         },

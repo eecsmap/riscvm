@@ -26,8 +26,8 @@ fn sstatus_aliases_mstatus() {
     let mut c = cpu();
     csr_write(&mut c, csr::MSTATUS, MSTATUS_MIE); // set a machine-only bit
     csr_write(&mut c, csr::SSTATUS, MSTATUS_SIE); // set SIE via the S-mode view
-    assert!(c.csrs[&csr::MSTATUS] & MSTATUS_SIE != 0);
-    assert!(c.csrs[&csr::MSTATUS] & MSTATUS_MIE != 0);
+    assert!(c.csrs[csr::MSTATUS] & MSTATUS_SIE != 0);
+    assert!(c.csrs[csr::MSTATUS] & MSTATUS_MIE != 0);
     assert_eq!(csr_read(&c, csr::SSTATUS), MSTATUS_SIE);
 }
 
@@ -35,7 +35,7 @@ fn sstatus_aliases_mstatus() {
 fn sie_aliases_mie() {
     let mut c = cpu();
     csr_write(&mut c, csr::SIE, 0x222); // SSIE|STIE|SEIE
-    assert_eq!(c.csrs[&csr::MIE], 0x222);
+    assert_eq!(c.csrs[csr::MIE], 0x222);
     assert_eq!(csr_read(&c, csr::SIE), 0x222);
 }
 
@@ -46,7 +46,7 @@ fn csrrc_clears_bits() {
     c.regs.write(10, 0b0101); // a0
     c.execute(&Instruction::new(0x34053773)).unwrap(); // csrrc a4, mscratch, a0
     assert_eq!(c.regs.read(14), 0b1111); // a4 <- old value
-    assert_eq!(c.csrs[&csr::MSCRATCH], 0b1010); // cleared bits set in a0
+    assert_eq!(c.csrs[csr::MSCRATCH], 0b1010); // cleared bits set in a0
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn csrrwi_uses_immediate_not_register() {
     c.csrs.insert(csr::MSCRATCH, 0xff);
     c.execute(&Instruction::new(0x3402d0f3)).unwrap(); // csrrwi x1, mscratch, 5
     assert_eq!(c.regs.read(1), 0xff);
-    assert_eq!(c.csrs[&csr::MSCRATCH], 5);
+    assert_eq!(c.csrs[csr::MSCRATCH], 5);
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn csrrsi_sets_bits_from_immediate() {
     let mut c = cpu();
     c.csrs.insert(csr::MSCRATCH, 0b1000);
     c.execute(&Instruction::new(0x3401e0f3)).unwrap(); // csrrsi x1, mscratch, 3
-    assert_eq!(c.csrs[&csr::MSCRATCH], 0b1011);
+    assert_eq!(c.csrs[csr::MSCRATCH], 0b1011);
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn csrrci_clears_bits_from_immediate() {
     c.csrs.insert(csr::MSTATUS, 0b111);
     c.execute(&Instruction::new(0x100174f3)).unwrap(); // csrrci s1, sstatus, 2
     assert_eq!(c.regs.read(9), 0b010); // s1 <- old sstatus view (bits 1/5/8 only: SIE here)
-    assert_eq!(c.csrs[&csr::MSTATUS], 0b101); // bit 1 (SIE) cleared; bits 0,2 survive
+    assert_eq!(c.csrs[csr::MSTATUS], 0b101); // bit 1 (SIE) cleared; bits 0,2 survive
 }
 
 #[test]
@@ -86,8 +86,8 @@ fn ecall_from_u_mode_delegated_traps_to_s_mode() {
     let new_pc = raise_trap(&mut c, 8, false, 0);
     assert_eq!(new_pc, 0x2000);
     assert_eq!(c.mode, csr::PRIV_S);
-    assert_eq!(c.csrs[&csr::SEPC], 0x1000);
-    assert_eq!(c.csrs[&csr::SCAUSE], 8);
+    assert_eq!(c.csrs[csr::SEPC], 0x1000);
+    assert_eq!(c.csrs[csr::SCAUSE], 8);
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn ecall_not_delegated_traps_to_m_mode() {
     let new_pc = raise_trap(&mut c, 8, false, 0);
     assert_eq!(new_pc, 0x3000);
     assert_eq!(c.mode, csr::PRIV_M);
-    assert_eq!(c.csrs[&csr::MEPC], 0x1000);
+    assert_eq!(c.csrs[csr::MEPC], 0x1000);
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn csrrw_self_swap_preserves_original_value() {
     c.regs.write(10, 0x1234); // a0
     c.execute(&Instruction::new(0x34051573)).unwrap(); // csrrw a0, mscratch, a0
     assert_eq!(c.regs.read(10), 0x9000);
-    assert_eq!(c.csrs[&csr::MSCRATCH], 0x1234);
+    assert_eq!(c.csrs[csr::MSCRATCH], 0x1234);
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn csrrs_self_alias_still_ors_original_value() {
     c.regs.write(10, 0x00f);
     c.execute(&Instruction::new(0x34052573)).unwrap(); // csrrs a0, mscratch, a0
     assert_eq!(c.regs.read(10), 0x0f0);
-    assert_eq!(c.csrs[&csr::MSCRATCH], 0x0ff);
+    assert_eq!(c.csrs[csr::MSCRATCH], 0x0ff);
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn clint_mtip_always_taken_in_m_mode_target_when_below_m() {
     assert!(check_interrupt(&mut c));
     assert_eq!(c.pc, 0x5000);
     assert_eq!(c.mode, csr::PRIV_M);
-    assert_eq!(c.csrs[&csr::MCAUSE], 7 | (1 << 63));
+    assert_eq!(c.csrs[csr::MCAUSE], 7 | (1 << 63));
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn clint_mtip_never_delegated_even_if_mideleg_says_so() {
     assert!(check_interrupt(&mut c));
     assert_eq!(c.mode, csr::PRIV_M);
     assert_eq!(c.pc, 0x5000); // mtvec, not stvec
-    assert_eq!(c.csrs[&csr::MCAUSE], 7 | (1 << 63));
+    assert_eq!(c.csrs[csr::MCAUSE], 7 | (1 << 63));
 }
 
 #[test]
@@ -229,5 +229,5 @@ fn supervisor_software_interrupt_delivered_via_sip() {
     assert!(check_interrupt(&mut c));
     assert_eq!(c.pc, 0x6000);
     assert_eq!(c.mode, csr::PRIV_S);
-    assert_eq!(c.csrs[&csr::SCAUSE], 1 | (1 << 63));
+    assert_eq!(c.csrs[csr::SCAUSE], 1 | (1 << 63));
 }

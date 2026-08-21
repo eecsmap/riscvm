@@ -39,10 +39,10 @@ use crate::mmu::{self, Access};
 use crate::plic::Plic;
 use crate::register::Registers;
 use crate::rvc::{self, CInstruction};
+use crate::csr::Csrs;
 use crate::trap;
 use crate::uart::Uart;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 pub enum DecodedInstruction {
@@ -59,7 +59,7 @@ pub struct Cpu {
     pub regs: Registers,
     pub pc: u64,
     pub bus: Rc<RefCell<Bus>>,
-    pub csrs: HashMap<u32, u64>,
+    pub csrs: Csrs,
     pub mode: u8,
     pub clint: Option<Rc<RefCell<Clint>>>,
     pub uart: Option<Rc<RefCell<Uart>>>,
@@ -72,7 +72,7 @@ impl Cpu {
         // Matches cpu.py's CPU.__init__: mstatus starts with some bits set
         // (notably MPP=11, i.e. M-mode, per the "hopefully we don't use
         // csrs too frequently" comment there), mie has MSIE|MTIE preset.
-        let mut csrs = HashMap::new();
+        let mut csrs = Csrs::new();
         csrs.insert(csr::MSTATUS, 0x000a_0000_0000);
         csrs.insert(csr::MIE, 0x222);
         Cpu {

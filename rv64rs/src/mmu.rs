@@ -38,7 +38,7 @@ pub enum Access {
 /// Translate a virtual address through Sv39 paging, if satp enables it.
 /// Returns va unchanged when paging is off (satp.MODE == Bare).
 pub fn translate(cpu: &mut Cpu, va: u64, access: Access) -> Result<u64, EmuError> {
-    let satp = cpu.csrs.get(&csr::SATP).copied().unwrap_or(0);
+    let satp = cpu.csrs.get(csr::SATP);
     let mode = satp >> 60;
     if mode == MODE_BARE {
         return Ok(va);

@@ -105,7 +105,7 @@ fn run_xv6_time_to_shell(path: &str, address: u64, fs_image: Option<&str>, limit
     let mut count: u64 = 0;
     let mut bare_count: u64 = 0; // satp.MODE == Bare: translate() is a no-op, a TLB couldn't help these
     loop {
-        let paging_on = emu.cpu.csrs.get(&rv64rs::csr::SATP).copied().unwrap_or(0) >> 60 == 8;
+        let paging_on = emu.cpu.csrs.get(rv64rs::csr::SATP) >> 60 == 8;
         if !paging_on {
             bare_count += 1;
         }
