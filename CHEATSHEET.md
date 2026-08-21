@@ -5,8 +5,8 @@ Common commands for working on this project. Run everything from the repo root.
 ## Setup
 
 ```sh
-pip install -e .          # editable install
-pytest                    # or just: make test
+uv sync                   # creates .venv, editable install + pytest, per pyproject.toml
+uv run pytest             # or just: make test
 ```
 
 ## Run the emulator
@@ -18,7 +18,7 @@ pytest                    # or just: make test
 at boot. Reaches the `$ ` shell prompt in a few minutes instead of hours.
 
 ```sh
-python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs-small.bin
+uv run python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs-small.bin
 ```
 
 Run it in a real terminal (not piped through another command) so your
@@ -29,7 +29,7 @@ type `ls`, `cat README`, etc. Not suitable for memory-heavy programs like
 ### Real xv6, full-size (matches real hardware's 128MB)
 
 ```sh
-python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs.bin
+uv run python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs.bin
 ```
 
 Boots identically, but `kinit()`'s byte-by-byte zero-fill of 128MB of RAM
@@ -39,14 +39,14 @@ small kernel above unless you specifically need the 128MB layout.
 ### Piped / scripted input instead of your keyboard
 
 ```sh
-python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img --uart-input commands.txt tests/xv6-kernel-fs-small.bin
+uv run python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img --uart-input commands.txt tests/xv6-kernel-fs-small.bin
 ```
 
 ### Development kernels (no filesystem, used to drive ISA implementation)
 
 ```sh
-python3 -m riscvm.emulator --address 0x80000000 tests/kernel64gc_nopageflush.bin uart_out.txt   # == make next
-python3 -m riscvm.emulator tests/fib.bin                                                        # quick sanity check
+uv run python3 -m riscvm.emulator --address 0x80000000 tests/kernel64gc_nopageflush.bin uart_out.txt   # == make next
+uv run python3 -m riscvm.emulator tests/fib.bin                                                        # quick sanity check
 ```
 
 Ctrl-C during any run dumps all registers and the current instruction
@@ -55,10 +55,10 @@ before exiting -- useful for seeing exactly where execution stalled.
 ## Tests
 
 ```sh
-pytest                              # full suite
-pytest tests/test_isa.py -v         # one file, verbose
-pytest -k mulh                      # by name substring
-pytest tests/test_isa.py::test_R    # one parametrized test function
+uv run pytest                              # full suite
+uv run pytest tests/test_isa.py -v         # one file, verbose
+uv run pytest -k mulh                      # by name substring
+uv run pytest tests/test_isa.py::test_R    # one parametrized test function
 ```
 
 ## Find the next instruction to implement
@@ -70,7 +70,7 @@ full decode dump (mnemonic, opcode, all immediate encodings).
 ```sh
 make next
 # or directly:
-python3 -m riscvm.emulator --address 0x80000000 tests/kernel64gc_nopageflush.bin uart_out.txt
+uv run python3 -m riscvm.emulator --address 0x80000000 tests/kernel64gc_nopageflush.bin uart_out.txt
 ```
 
 Then implement it in `riscvm/rv64i.py` (or `rv64c.py` for compressed
@@ -80,8 +80,8 @@ using the exact instruction word from the crash dump, and re-run.
 ## Disassemble / assemble a single instruction
 
 ```sh
-python3 tools/as.py                 # assemble: paste asm, get bytes
-python3 tools/as.py --dis           # disassemble: paste hex, get asm
+uv run python3 tools/as.py                 # assemble: paste asm, get bytes
+uv run python3 tools/as.py --dis           # disassemble: paste hex, get asm
 ```
 
 ## Performance: benchmark and profile
@@ -91,8 +91,8 @@ Both scripts run the real xv6 boot (`tests/xv6-kernel-fs-small.bin` +
 loop.
 
 ```sh
-python3 tools/bench_xv6_boot.py [seconds]              # sustained instructions/sec (default 30s)
-python3 tools/profile_xv6_boot.py [instruction_count]  # cProfile, sorted by cumulative then self time (default 2M)
+uv run python3 tools/bench_xv6_boot.py [seconds]              # sustained instructions/sec (default 30s)
+uv run python3 tools/profile_xv6_boot.py [instruction_count]  # cProfile, sorted by cumulative then self time (default 2M)
 ```
 
 To compare against PyPy: this codebase uses `match`/`case` (3.10+), so it
