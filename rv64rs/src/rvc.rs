@@ -175,27 +175,27 @@ pub fn execute(instr: &CInstruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             0b010 => {
                 // C.LW: lw rd', offset[6:2](rs1')
                 let addr = cpu.regs.read(instr.rs1_prime()).wrapping_add(instr.offset_6_2() as u64);
-                let v = cpu.bus.read(addr, 4)?;
+                let v = cpu.read(addr, 4)?;
                 cpu.regs.write(instr.rs2_prime(), sext(v as u32, 32) as u64);
                 Ok(default_next)
             }
             0b011 => {
                 // C.LD: ld rd', offset[7:3](rs1')
                 let addr = cpu.regs.read(instr.rs1_prime()).wrapping_add(instr.offset_7_3() as u64);
-                let v = cpu.bus.read(addr, 8)?;
+                let v = cpu.read(addr, 8)?;
                 cpu.regs.write(instr.rs2_prime(), v);
                 Ok(default_next)
             }
             0b110 => {
                 // C.SW: sw rs2', offset[6:2](rs1')
                 let addr = cpu.regs.read(instr.rs1_prime()).wrapping_add(instr.offset_6_2() as u64);
-                cpu.bus.write(addr, 4, cpu.regs.read(instr.rs2_prime()))?;
+                cpu.write(addr, 4, cpu.regs.read(instr.rs2_prime()))?;
                 Ok(default_next)
             }
             0b111 => {
                 // C.SD: sd rs2', offset[7:3](rs1')
                 let addr = cpu.regs.read(instr.rs1_prime()).wrapping_add(instr.offset_7_3() as u64);
-                cpu.bus.write(addr, 8, cpu.regs.read(instr.rs2_prime()))?;
+                cpu.write(addr, 8, cpu.regs.read(instr.rs2_prime()))?;
                 Ok(default_next)
             }
             _ => cpu.illegal_c_instruction(instr),
@@ -323,7 +323,7 @@ pub fn execute(instr: &CInstruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
                     return cpu.illegal_c_instruction(instr);
                 }
                 let addr = cpu.regs.read(2).wrapping_add(instr.offset_8_3_ldsp() as u64);
-                let v = cpu.bus.read(addr, 8)?;
+                let v = cpu.read(addr, 8)?;
                 cpu.regs.write(rd, v);
                 Ok(default_next)
             }
@@ -366,7 +366,7 @@ pub fn execute(instr: &CInstruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             0b111 => {
                 // C.SDSP: sd rs2, offset[8:3](x2)
                 let addr = cpu.regs.read(2).wrapping_add(instr.offset_8_3_sdsp() as u64);
-                cpu.bus.write(addr, 8, cpu.regs.read(instr.rs2()))?;
+                cpu.write(addr, 8, cpu.regs.read(instr.rs2()))?;
                 Ok(default_next)
             }
             _ => cpu.illegal_c_instruction(instr),

@@ -4,17 +4,19 @@
 //! JAL, JALR, and MISC-MEM/FENCE as a no-op -- pure register compute and
 //! control flow, no bus access.
 //!
-//! Stage 2 (this stage) adds LOAD/STORE, going through cpu.bus directly
-//! (no MMU translation yet -- that's stage 6, same as riscvm's cpu.py
-//! before mmu.py existed).
+//! Stage 2 added LOAD/STORE. Stage 4 added SYSTEM (opcode 0x73): CSRRW/
+//! CSRRS/CSRRC and their -immediate forms, ECALL, MRET, SRET, WFI (no-op).
+//! EBREAK is decoded but not implemented, matching riscvm's own actor():
+//! it's in the Mnemonic table but has no case in the match, so it falls
+//! through to the same "unimplemented" error there too.
 //!
-//! Stage 4 (this stage) adds SYSTEM (opcode 0x73): CSRRW/CSRRS/CSRRC and
-//! their -immediate forms, ECALL, MRET, SRET, WFI (no-op), SFENCE.VMA
-//! (no-op -- real semantics arrive with the MMU in stage 6/8, matching
-//! rv64i.py's own SFENCE_VMA case, which is `pass` regardless). EBREAK is
-//! decoded but not implemented, matching riscvm's own actor(): it's in the
-//! Mnemonic table but has no case in the match, so it falls through to the
-//! same "unimplemented" error there too.
+//! Stage 6 (this stage): LOAD/STORE (and AMOSWAP.W) now go through
+//! cpu.read()/cpu.write() instead of cpu.bus.read/write directly, so they
+//! pick up Sv39 translation (see mmu.rs) once satp switches paging on.
+//! SFENCE.VMA stays a no-op -- riscvm's own SFENCE_VMA case is `pass`
+//! too, since real hardware's SFENCE.VMA exists to flush a TLB and this
+//! project doesn't model one (that's the stage 8 stretch goal); with no
+//! cache to flush, a fresh translate() on every access is already correct.
 
 use crate::cpu::Cpu;
 use crate::decode::Instruction;
@@ -56,13 +58,13 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
         OPCODE_LOAD => {
             let addr = cpu.regs.read(instr.rs1).wrapping_add(instr.imm_i as u64);
             let out = match instr.funct3 {
-                0x0 => sext64(cpu.bus.read(addr, 1)?, 8),   // LB
-                0x1 => sext64(cpu.bus.read(addr, 2)?, 16),  // LH
-                0x2 => sext64(cpu.bus.read(addr, 4)?, 32),  // LW
-                0x3 => cpu.bus.read(addr, 8)?,               // LD
-                0x4 => cpu.bus.read(addr, 1)?,                // LBU
-                0x5 => cpu.bus.read(addr, 2)?,                // LHU
-                0x6 => cpu.bus.read(addr, 4)?,                // LWU
+                0x0 => sext64(cpu.read(addr, 1)?, 8),   // LB
+                0x1 => sext64(cpu.read(addr, 2)?, 16),  // LH
+                0x2 => sext64(cpu.read(addr, 4)?, 32),  // LW
+                0x3 => cpu.read(addr, 8)?,               // LD
+                0x4 => cpu.read(addr, 1)?,                // LBU
+                0x5 => cpu.read(addr, 2)?,                // LHU
+                0x6 => cpu.read(addr, 4)?,                // LWU
                 _ => return cpu.illegal_instruction(instr),
             };
             cpu.regs.write(instr.rd, out);
@@ -72,10 +74,10 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             let addr = cpu.regs.read(instr.rs1).wrapping_add(instr.imm_s as u64);
             let value = cpu.regs.read(instr.rs2);
             match instr.funct3 {
-                0x0 => cpu.bus.write(addr, 1, value)?, // SB
-                0x1 => cpu.bus.write(addr, 2, value)?, // SH
-                0x2 => cpu.bus.write(addr, 4, value)?, // SW
-                0x3 => cpu.bus.write(addr, 8, value)?, // SD
+                0x0 => cpu.write(addr, 1, value)?, // SB
+                0x1 => cpu.write(addr, 2, value)?, // SH
+                0x2 => cpu.write(addr, 4, value)?, // SW
+                0x3 => cpu.write(addr, 8, value)?, // SD
                 _ => return cpu.illegal_instruction(instr),
             };
             Ok(default_next)
@@ -233,8 +235,8 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             let funct5 = instr.funct7 >> 2;
             if instr.funct3 == 0x2 && funct5 == 0b00001 {
                 let addr = cpu.regs.read(instr.rs1);
-                let old = sext64(cpu.bus.read(addr, 4)?, 32);
-                cpu.bus.write(addr, 4, cpu.regs.read(instr.rs2))?;
+                let old = sext64(cpu.read(addr, 4)?, 32);
+                cpu.write(addr, 4, cpu.regs.read(instr.rs2))?;
                 cpu.regs.write(instr.rd, old);
                 Ok(default_next)
             } else {

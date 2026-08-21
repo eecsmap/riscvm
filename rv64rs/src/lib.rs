@@ -11,6 +11,7 @@ pub mod decode;
 pub mod emulator;
 pub mod error;
 pub mod execute;
+pub mod mmu;
 pub mod plic;
 pub mod ram;
 pub mod register;

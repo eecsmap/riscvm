@@ -12,8 +12,11 @@
 //! access -- the Rust equivalent of riscvm's XV6.__init__ putting the same
 //! Python object on both the bus and cpu.uart/clint/plic.
 //!
-//! MMU translation (mmu.py's `translate()` wrapping every bus access) is
-//! still a later-stage addition (stage 6).
+//! Stage 6 adds MMU translation: Cpu::read()/write() route through
+//! mmu::translate() the same way cpu.py's read()/write() do, and fetch()
+//! translates the fetch address too. Instructions must go through these
+//! (not cpu.bus.read/write directly) to get translation -- see execute.rs
+//! and rvc.rs's LOAD/STORE/AMO cases.
 
 use crate::bus::Bus;
 use crate::clint::Clint;
@@ -21,6 +24,7 @@ use crate::csr;
 use crate::decode::Instruction;
 use crate::error::{error, EmuError};
 use crate::execute;
+use crate::mmu::{self, Access};
 use crate::plic::Plic;
 use crate::register::Registers;
 use crate::rvc::{self, CInstruction};
@@ -90,12 +94,25 @@ impl Cpu {
         }
         trap::check_interrupt(self);
 
-        let word = self.bus.read(self.pc, 4)? as u32;
+        let pa = mmu::translate(self, self.pc, Access::X)?;
+        let word = self.bus.read(pa, 4)? as u32;
         if word & 0b11 == 0b11 {
             Ok(DecodedInstruction::Full(Instruction::new(word)))
         } else {
             Ok(DecodedInstruction::Compressed(CInstruction::new(word as u16)))
         }
+    }
+
+    /// Mirrors CPU.read(address, size): translate then read.
+    pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
+        let pa = mmu::translate(self, address, Access::R)?;
+        self.bus.read(pa, size)
+    }
+
+    /// Mirrors CPU.write(address, size, value): translate then write.
+    pub fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
+        let pa = mmu::translate(self, address, Access::W)?;
+        self.bus.write(pa, size, value)
     }
 
     /// Mirrors CPU.execute(instruction) for a full RV64I instruction.
