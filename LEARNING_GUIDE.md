@@ -10,8 +10,11 @@
    什么"，完全不是设计出来的教学大纲，是真实调试出来的。
 2. `rv64rs/`：Rust 重新实现，在 Python 版本已经跑通之后，作者**明知道终点
    长什么样**，为了"加深理解"又按 8 个阶段（`rv64rs/PLAN.md`）把同一条路
-   重新走了一遍，最后还做了 5 轮性能优化（`perf P1`..`P5`），把启动到 shell
-   的时间从原型阶段的 ~3 秒压到 0.77 秒。
+   重新走了一遍，之后又做了两轮性能优化：第一轮（`perf P1`..`P5`）把
+   2MB 内核的启动时间从原型阶段的 ~3 秒压到 0.77 秒；第二轮（`perf
+   P6`..`P10`）拿知名的 Rust 参考实现 `rvemu-for-book` 当外部参照系，
+   把 128MB 内核的启动时间又从 ~14.6 秒压到 ~9.6 秒，期间不惜推翻了
+   Stage 0/7 里刚教过的总线设计。
 
 这份指南把两段历史拼在一起，按**同一条技术路线**（寄存器 → 内存 → 指令集
 → 特权态/中断 → MMIO 设备 → 分页 → 磁盘 → 性能优化）重新组织，每一站都会：
@@ -89,15 +92,16 @@ cd rv64rs && cargo run --release -- fib              # Rust 版 fib，应输出�
 
 | 阶段 | 主题 | Python 参考提交 | Rust 参考提交 | 核心原理 | 里程碑 |
 |---|---|---|---|---|---|
-| 0 | 骨架：寄存器 + 总线 | `dfba7f8` init ~ `9f6a74e` 引入 matching 逻辑 | `a6d3f16` | 寄存器堆、地址空间仲裁 | `cargo build` + 总线用例通过 |
-| 1 | ALU + 控制流 | `e077007`/`a8f4b5e`/`918eab5` fib 系列、`6f7a4b3` add jal、`c1dae7f` add beq | `53e0211` | 指令编码、立即数符号扩展、PC 相对跳转 | `fib.bin`: `a0 == 23416728348467685` |
-| 2 | MEM：真实内存总线 | `9b9e3b7` add stack for xv6 kernel | `fa0ad32` | 内存总线、大小端、栈 | 用到栈的程序跑对 |
-| 3 | 指令集补完：RV64M + RVC | `266e342` add mul、`a2ad265` RV64M 全套、`2ced32b` 起一串 rvc 提交 | `02a6162` | 压缩指令/代码密度、有符号乘除法语义 | `kernel64gc_nopageflush.bin` 的"找下一条指令"循环跑得动 |
-| 4 | 特权态 / CSR / Trap | `1ce59e1` add mret、`515ab76` 特权级+trap+中断、`fa6479f` 修复委托 bug | `088783f` | 特权级、CSR 别名、异常/中断委托 | `test_trap.py` 全部用例通过 |
-| 5 | MMIO 设备：CLINT/UART/PLIC | `d4b8a62` 支持内核打印、`f1629f1`/`7220fae` uart、`1856fcd` uart 输入 | `79c92a5` | MMIO、时钟中断、中断控制器优先级 | xv6 打印出 boot 信息 |
-| 6 | MMU：Sv39 分页 | `a13f8dc` Sv39 walk | `afb2c90` | 虚拟内存、三级页表、超页 | 内核开分页后继续跑（317 → 10.8M 条指令） |
-| 7 | VirtIO 磁盘 + 真文件系统 | `34e6908` 最小 virtio、`baa4069` 真文件系统、`b72e60e` 升级到 v2 协议 | `d23312e` | DMA、描述符环协议 | 跑到 `$` shell，`ls`/`echo` 能用 |
-| P1-P5 | 性能优化（只有 Rust 做了这轮） | `0c230b0`/`1c59c16`（Python 侧也做过小优化，规模完全不同） | `156076d`/`71e1ade`/`7c4c394`/`fbb6436`/`344364e` | 数据结构选型、cache locality、TLB | boot-to-shell：2.96s → 0.77s |
+| 0 | 骨架：寄存器 + 总线 | `dfba7f8` init ~ `9f6a74e` 引入 matching 逻辑 | `1e40ee3` | 寄存器堆、地址空间仲裁 | `cargo build` + 总线用例通过 |
+| 1 | ALU + 控制流 | `38254b9`/`e832379`/`a676e72` fib 系列、`7da0c5d` add jal、`420aa95` add beq | `d67f0ba` | 指令编码、立即数符号扩展、PC 相对跳转 | `fib.bin`: `a0 == 23416728348467685` |
+| 2 | MEM：真实内存总线 | `5973ee9` add stack for xv6 kernel | `bc5529b` | 内存总线、大小端、栈 | 用到栈的程序跑对 |
+| 3 | 指令集补完：RV64M + RVC | `d44eeef` add mul、`498a77a` RV64M 全套、`ec6c5b5` 起一串 rvc 提交 | `23b16de` | 压缩指令/代码密度、有符号乘除法语义 | `kernel64gc_nopageflush.bin` 的"找下一条指令"循环跑得动 |
+| 4 | 特权态 / CSR / Trap | `886a40c` add mret、`2134cfa` 特权级+trap+中断、`dbd2c3c` 修复委托 bug | `f94d970` | 特权级、CSR 别名、异常/中断委托 | `test_trap.py` 全部用例通过 |
+| 5 | MMIO 设备：CLINT/UART/PLIC | `5a0d697` 支持内核打印、`fc6f294`/`6292b0c` uart、`f71da95` uart 输入 | `b582056` | MMIO、时钟中断、中断控制器优先级 | xv6 打印出 boot 信息 |
+| 6 | MMU：Sv39 分页 | `68f2dd7` Sv39 walk | `427ae76` | 虚拟内存、三级页表、超页 | 内核开分页后继续跑（317 → 10.8M 条指令） |
+| 7 | VirtIO 磁盘 + 真文件系统 | `222d8ad` 最小 virtio、`78478c8` 真文件系统、`d992321` 升级到 v2 协议 | `0efceca` | DMA、描述符环协议 | 跑到 `$` shell，`ls`/`echo` 能用 |
+| P1-P5 | 性能优化第一轮（只有 Rust 做了这轮） | `81dc1ae`/`92c5a4f`（Python 侧也做过小优化，规模完全不同） | `141f1f4`/`d843c5e`/`453ff9b`/`7373a9a`/`419f432` | 数据结构选型、cache locality、TLB | boot-to-shell（2MB 内核）：2.96s → 0.77s |
+| P6-P10 | 性能优化第二轮：对照外部参照系 `rvemu-for-book`，推翻 Stage 0/7 的设备抽象设计 | 无对应（这轮是纯 Rust 架构调整，Python 版没有走过） | `9547666`/`c955a6b`/`ba94481`/`4a628db`/`e2e5915` | 静态 vs 动态分发、放弃泛型换速度、内联消除调用边界 | boot-to-shell（128MB 内核）：14.58s → 9.6s |
 
 ---
 
@@ -239,6 +243,13 @@ impl Bus {
 没有做类似优化——想一想，为什么同一个"二次查找"的问题，在 Python 里几乎
 不会被当成性能问题，在 Rust 的高性能场景里却值得专门画一次 profile？
 
+**先剧透一下后面的走向**：这里的 `trait Device` + `Vec<RefCell<Box<dyn
+Device>>>` 是"通用总线，能挂任意设备"的经典写法，和 Python 的 `bus.py`
+几乎逐行对应，本节到 Stage 7 都会一直沿用这个设计。但性能优化第二轮
+（P6/P7）会把它整个推翻，换成一个不再通用、只认死这个模拟器实际会用到的
+7 种设备的具体结构体——读到那一节时回头对照这里，会是全篇最值得琢磨的一
+次"设计决策被证据推翻"的案例。
+
 ### Rust 语言点
 
 - `trait Device { fn read(...); fn write(...); }` 对应 Python 的"鸭子类
@@ -358,7 +369,7 @@ OPCODE_OP_IMM => {
 `SLTI`……），再用 `match mnemonic` 分发；Rust 版直接在 `opcode`/`funct3`
 数值上分发，没有中间的枚举层。这不是必然选择——`rv64rs` 完全可以先做一层
 `enum Mnemonic`。想一想两种设计各自的取舍：多一层枚举能获得什么（提示：
-反汇编、日志可读性），又要多付出什么（提示：`0c230b0` 这条 Python 侧的性
+反汇编、日志可读性），又要多付出什么（提示：`81dc1ae` 这条 Python 侧的性
 能修复提交叫"Fix duplicate get_mnemonic() call in actor() — ~30% faster
 decode"——这说明了什么）？
 
@@ -919,6 +930,18 @@ Python 的对象模型没有"借用检查"这个概念，代价是如果真的�
 的重入调用，Python 只会栈溢出，而不会在设计阶段就被 Rust 的借用检查器提
 前拦下来强迫你想清楚数据流向。
 
+> **这一节描述的是 Stage 7 当时的设计，后来被推翻了。** 上面这套"整条总
+> 线 `Rc<RefCell<Bus>>` 共享 + 每个设备槽各自一个 `RefCell` 化解重入"的
+> 方案，在性能优化第二轮的 P7 里被整体重做：`VirtIOBlk` 不再持有指回
+> `Bus` 的 `Rc<RefCell<Bus>>`，而是把 `bus: &mut Bus` 当参数直接传进去；
+> 一旦重入访问的路径从"我自己揣着一份共享句柄，随时可以回头调用总线"变
+> 成"调用方把总线借给我用一下"，Rc/RefCell 的需求本身就消失了——同一个
+> "重入访问"问题，换一种接口形状就不再需要运行时借用检查。这不代表这一
+> 节的推理错了：在 P7 之前，`VirtIOBlk` 持有共享句柄确实是当时接口形状下
+> 最直接的解法，Rc<RefCell<T>> 也确实是那个形状下唯一站得住的选择；只是
+> 后来发现接口形状本身可以换掉。继续读到"性能优化 P6-P10"一节时会看到完
+> 整的前后对比，建议现在先记住这个问题，读到那里再回来对照。
+
 ### 读代码：MMIO 寄存器表
 
 `virtio.py`（255 行）和 `virtio.rs`（282 行）都是一长串寄存器地址常量 +
@@ -935,7 +958,10 @@ Python 的对象模型没有"借用检查"这个概念，代价是如果真的�
   程，没有长期运行、这个泄漏会累积的场景"。这是一个很好的例子说明 Rust
   的内存安全保证（不会有悬垂指针/use-after-free）和"绝对不会泄漏内存"是
   两件不同的事——`Rc` 循环引用是 Rust 里少数几种编译器不会替你挡住的资
-  源问题之一。
+  源问题之一。（这个环后来在 P7/P8 被连根拔掉了——`VirtIOBlk` 不再持有
+  `Rc<RefCell<Bus>>`，`Cpu.bus` 也变回了普通拥有的 `Bus`，环本身不存在
+  了。上面这条"Rust 允许你写出引用循环"的语言点依然成立，只是这份代码
+  现在不再是那个例子——详见性能优化一节。）
 
 ### 动手练习
 
@@ -964,10 +990,10 @@ $
 
 ---
 
-## 性能优化 P1-P5：只有 Rust 版本走的一段路
+## 性能优化 P1-P5（第一轮）：只有 Rust 版本走的一段路
 
-Python 侧其实也做过两次很小的性能修复（`0c230b0` 消除 `actor()` 里重复
-调用 `get_mnemonic()`，声称快 30%；`1c59c16` 用 `int.from_bytes` 合并
+Python 侧其实也做过两次很小的性能修复（`81dc1ae` 消除 `actor()` 里重复
+调用 `get_mnemonic()`，声称快 30%；`92c5a4f` 用 `int.from_bytes` 合并
 fetch 的多次读取），但量级和 Rust 这一轮完全不是一回事——这正是这一节想
 讲的核心问题。
 
@@ -1044,9 +1070,241 @@ Stage 2 提过的 `Ram::read`/`write`（P3）、Stage 0 提过的 `Bus` 直接�
 
 用 `cargo run --release --profile profiling`（配合 `rv64rs/Cargo.toml`
 里的 `[profile.profiling]`）加系统自带的 profiler，自己找一次热点，而不
-是直接抄 P1-P5 的结论——README 里坦率地说"当前 profile 剩下的热点大多是
-未解析的内联地址，不是一个清晰的单点"，也就是说这条优化路径本身还没走到
-头，可能还有你能自己找到的下一个 P6。
+是直接抄 P1-P5 的结论——当时 README 坦率地说"当前 profile 剩下的热点大
+多是未解析的内联地址，不是一个清晰的单点"。事实证明这条路确实还没走到
+头：下面就是真的又往下挖出来的 P6-P10。
+
+---
+
+## 性能优化 P6-P10（第二轮）：拿一个外部参照系推翻 Stage 0/7 的设计
+
+P1-P5 做完之后，这个项目又做了一件此前没做过的事：**拿一个知名的同类开
+源实现做外部参照系**，而不是只跟自己比。对照对象是
+[`d0iasm/rvemu-for-book`](https://github.com/d0iasm/rvemu-for-book)——一
+个广为人知的"用 Rust 写 RISC-V 模拟器"教学项目（配套一本同名在线书）。
+在差不多大小的内核/文件系统镜像上，`rvemu-for-book` 跑到 shell 提示符只
+要 **~5.3 秒**，而 P1-P5 做完之后这个项目在 128MB 内核上要 **~14.6 秒**
+——慢了约 2.7 倍。这个数字本身就是这一节的第一个问题的答案：**你怎么知
+道 25M instr/s 到底是快是慢？** 单看自己的 profile 永远回答不了这个问
+题，必须找一个可信的外部参照系——这和前面几站"拿 QEMU 的反汇编轨迹核对
+正确性"是同一种方法论，只是这次用来核对的是性能而不是正确性。
+
+### 原理问题
+
+1. `Box<dyn Device>`（trait object，虚表分发）和一个封闭的 `enum` +
+   `match`（静态分发）都能表达"一组不同类型、统一接口"的设备集合，Rust
+   允许你在两者之间选——Python 完全没有这个选择的空间，为什么？
+2. P6 只把虚表分发换成 `enum` 分发，只换来了 ~3-4% 的提升；P7 把整个
+   `Bus` 从"任意设备的通用列表"改成"写死这 7 种设备的具体字段"，换来了
+   ~18-20%。这两次改动看起来都是"去掉一层间接"，为什么效果差了几倍？
+3. Stage 7 讲过"`VirtIOBlk` 需要共享总线的可变引用，所以只能用
+   `Rc<RefCell<Bus>>`"——但 P7 之后 `VirtIOBlk` 完全不用 `Rc`/`RefCell`
+   了，直接用一个 `&mut Bus` 参数就解决了同样的问题。这是不是说明 Stage
+   7 的推理当初就是错的？如果不是，那什么变了？
+4. P9/P10 优化的目标（`mmu::translate`、`Bus::read`/`write`）在优化前后
+   函数体本身几乎没变——省下的时间到底是从哪里来的？
+
+### 读代码：P6/P7——从"通用总线"到"写死的总线"
+
+P6 只做一件事：把 `Box<dyn Device>` 换成一个封闭的 `enum DeviceImpl`，
+用 `match` 分发代替虚表调用，其余（`RangeManager` 二分查找、每个设备槽
+一个 `RefCell`）原样保留。128MB 内核 boot-to-shell 只从 baseline 的
+~14.58s 降到 ~14.14-14.50s——commit message 自己的结论很诚实：**去虚表
+本身根本不是大头**。
+
+P7 才是真正的架构调整。现在的 `Bus` 长这样（对照 Stage 0 见过的
+`Vec<RefCell<Box<dyn Device>>>`，这是同一个 `struct Bus` 现在的样子）：
+
+```rust
+// rv64rs/src/bus.rs:187-203（节选字段，完整注释见源码）
+pub struct Bus {
+    range_manager: RangeManager, // 只在 add 时做重叠/越界校验，read/write 不再查它
+    ram: Ram,
+    ram_range: Range,
+    stack: Ram,
+    stack_range: Range,
+    bootloader: Ram,
+    bootloader_range: Range,
+    clint: Option<Rc<RefCell<Clint>>>,
+    clint_range: Range,
+    uart: Option<Rc<RefCell<Uart>>>,
+    uart_range: Range,
+    plic: Option<Rc<RefCell<Plic>>>,
+    plic_range: Range,
+    virtio: Option<Rc<RefCell<VirtIOBlk>>>,
+    virtio_range: Range,
+}
+```
+
+`read`/`write` 不再走"二分查找 range → 按下标取设备 → 调用 trait 方
+法"，而是把最热的两种（`ram`、`stack`）直接摆在最前面顺序判断：
+
+```rust
+// rv64rs/src/bus.rs:297-307
+#[inline(always)]
+pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
+    let sz = size as u64;
+    if self.ram_range.contains(address, sz) {
+        return self.ram.read(address - self.ram_range.start, size);
+    }
+    if self.stack_range.contains(address, sz) {
+        return self.stack.read(address - self.stack_range.start, size);
+    }
+    self.read_mmio(address, size, sz)   // 未内联，CLINT/UART/PLIC/VirtIO/bootloader 走这里
+}
+```
+
+`RangeManager` 没有被删掉，但降级成了"只在 `add_device` 时校验有没有重
+叠、越界"的一次性工具，不再参与每次访问的运行时查找——这是"通用查找结
+构"到"写死判断顺序"之间的取舍：一旦你愿意放弃"以后还能塞任意新设备类
+型"这个通用性，把设备种类和访问频率提前焗死在代码里，编译器能生成的代
+码就直接了很多。**这一步的动机和结论，commit message 里说得非常克制**：
+"这是相对 riscvm 通用 `bus.py` 的一次真正架构性背离……是否值得保留这个
+权衡，值得慎重决定，而不是默认'更快的就是更好的'"。P8-P10 后续的存在说
+明这个决定是"保留"，但这句话本身值得记住——不是所有能测出提升的改动都
+默认该合并。
+
+**VirtIOBlk 的重入问题，用另一种方式解决了**：`Bus::read`/`write` 现在
+是 `&mut self`（要直接改 `ram`/`stack` 字段），这让 `VirtIOBlk` 原来那
+个"自己揣一份 `Rc<RefCell<Bus>>`，处理 `QUEUE_NOTIFY` 时回头读写内存"的
+老办法直接失效——`&mut self` 意味着外层调用已经独占持有这个 `Bus`，
+`VirtIOBlk` 再从 `Rc<RefCell<Bus>>` 里 `borrow_mut()` 一次就是货真价实
+的重复借用，一定 panic。新的解法是把 `bus: &mut Bus` 当参数，从
+`Bus::write` 的分发处一路传进去：
+
+```rust
+// rv64rs/src/bus.rs:353-365
+if self.virtio_range.contains(address, sz) {
+    // VirtIOBlk 的 write 可能触发 QUEUE_NOTIFY -> process_queue，
+    // 需要 DMA 读写 guest 内存。先 clone 一份 Rc（只是引用计数 +1，
+    // 很便宜），再对这份独立的句柄 borrow_mut()——这样 self 依然是
+    // 空闲的，可以作为 `bus: &mut Bus` 参数传进去，而不是像
+    // VirtIOBlk 原来那样通过共享的 Rc<RefCell<Bus>> 重新进入。
+    let virtio = self.virtio.clone().unwrap();
+    let offset = address - self.virtio_range.start;
+    return virtio.borrow_mut().write(offset, size, value, self);
+}
+```
+
+`VirtIOBlk::write`/`process_queue`/`process_descriptor_chain` 的签名都
+多了一个 `bus: &mut Bus` 参数（`rv64rs/src/virtio.rs:133/168/200`），不
+再需要自己持有任何指向 `Bus` 的引用。
+
+**回到原理问题 3**：Stage 7 当初的推理（"需要共享的可变访问，所以需要
+`Rc<RefCell<T>>`"）在*那个接口形状下*是对的——`VirtIOBlk` 自己持有一份
+指向 `Bus` 的引用，又要在被 `Bus` 调用的同时反过来调用 `Bus`，这确实只
+有 `Rc<RefCell<T>>`（或等价的运行时借用检查）能解开。P7 改变的不是这个
+推理，而是**接口形状本身**：把"设备自己持有总线的引用，随时可以回头调
+用"，换成"调用方把总线当参数借给设备用一下，用完立刻还回来"。后一种形
+状下，Rust 原生的 `&mut` 借用规则自己就能保证不会有两个地方同时改
+`Bus`，根本不需要运行时检查。这是这份指南里最重要的一条 Rust 心法：
+**`Rc<RefCell<T>>` 不是"共享可变状态"问题的唯一答案，它是特定接口形状
+（对象互相持有引用）下的权宜之计；换一种接口形状（显式传参），同一个问
+题可能根本不需要它。**
+
+### 读代码：P8——`Cpu.bus` 也不再需要共享了
+
+P7 让 `VirtIOBlk` 不再持有 `Rc<RefCell<Bus>>` 之后，整个项目里已经没有
+谁需要"多个所有者共享同一个 `Bus`"了——`CLINT`/`UART`/`PLIC` 依然是
+`Rc<RefCell<_>>`（原因不变：`Cpu` 自己也要持有一份去调用
+`tick()`/`poll_input()`/`claimable()`，这和 `Bus` 的共享需求是两回事），
+但 `Bus` 本身完全可以变回普通的、单一所有者的字段：
+
+```rust
+// rv64rs/src/cpu.rs:70-73（节选）
+pub struct Cpu {
+    pub regs: Registers,
+    pub pc: u64,
+    pub bus: Bus,   // 曾经是 Rc<RefCell<Bus>>（stage 7），P8 之后变回普通拥有
+    ...
+}
+```
+
+省下来的是**每一次总线访问都要付的一次 `RefCell` 借用检查**（本质是对
+一个 `Cell<isize>` 做比较和分支，压在 `Rc` 的指针跳转之上）——而总线访
+问发生在每一条指令的取指、绝大多数 load/store、页表 walk 的每一步，所以
+即使单次检查很便宜，乘以几亿次也是实打实的时间。
+
+### 读代码：P9/P10——把"函数调用"本身当成开销来消除
+
+P6-P8 都是在换数据结构/所有权模型，P9/P10 换了一个完全不同的角度：**函
+数体已经很便宜了，开销来自调用这件事本身**。`mmu::translate` 在 Bare
+模式下的快路径只是"读一个 CSR、移位、比较、返回"，但因为 `fetch`/
+`read`/`write` 全部被内联进了 `Cpu::step`，`translate` 是这条路径上*唯
+一没被内联*的函数——每条指令都要付一次真实的调用/返回开销，哪怕 97.5%
+的调用最终只是走了那个最简单的分支。解法是把这一个函数拆成两个：
+
+```rust
+// rv64rs/src/mmu.rs:129-136
+#[inline(always)]
+pub fn translate(cpu: &mut Cpu, va: u64, access: Access) -> Result<u64, EmuError> {
+    let satp = cpu.csrs.get(csr::SATP);
+    if satp >> 60 == MODE_BARE {
+        return Ok(va);          // 97.5% 的调用走这条路，现在会被直接内联进调用者
+    }
+    translate_paged(cpu, va, access, satp)   // 不内联：真正的页表 walk，只占 2.5%
+}
+```
+
+`Bus::read`/`write` 在 P10 里被同一个模式再处理一次（前面 P7 那段代码已
+经展示过结果：`ram`/`stack` 判断内联在 `read`/`write` 里，`read_mmio`/
+`write_mmio` 单独留成不内联的函数）。这是 P10 单次改动里提升最大的一次
+（~12%），原因很直接：它是继 `mmu::translate` 之后，这条路径上*第二个*
+没被内联的函数——把它也拆开之后，从取指到访存，几乎全程都在一个内联展开
+的大函数体内运行，中间没有一次真正的调用/返回。
+
+### 汇总数字（128MB 内核，`xv6-time-to-shell`）
+
+| 阶段 | 改动 | boot-to-shell | 相对提升 |
+|---|---|---|---|
+| baseline（P1-P5 之后） | — | ~14.58s（~29.3M instr/s） | — |
+| P6 | `Box<dyn Device>` → 封闭 `enum` + `match` | ~14.14-14.50s | ~3-4% |
+| P7 | `Bus` 改成写死的具体字段结构体，热路径无 `RefCell` | ~11.70-11.76s（36.3-36.5M instr/s） | 另 ~18-20% |
+| P8 | `Cpu.bus`：`Rc<RefCell<Bus>>` → 直接拥有 | ~11.39-11.50s（37.1-37.5M instr/s） | 另 ~2-3% |
+| P9 | `mmu::translate` 拆出内联的 Bare 快路径 | ~10.84-10.88s（39.2-39.4M instr/s） | 另 ~4-5% |
+| P10 | `Bus::read`/`write` 拆出内联的 ram/stack 快路径 | ~9.57-9.61s（44.4-44.6M instr/s） | 另 ~12%，单步最大 |
+
+累计 P6-P10：14.58s → 9.6s，提速约 34%；对照 `rvemu-for-book` 的 5.31s，
+差距从 2.7 倍缩小到 1.8 倍。全程 70 个测试（从 Python `tests/test_*.py`
+移植的那批）保持全绿，指令数逐次核对完全一致（426,917,888 条不变）——
+说明这五步只字未改行为，纯粹是"用什么结构、内联到什么程度"的调整。
+
+### Rust 语言点：这一轮真正的教训
+
+- **静态分发 vs 动态分发，Rust 让你自己选，Python 没得选**：
+  `Box<dyn Trait>` 是运行时通过虚表决定调哪个实现，灵活（真正的任意类
+  型集合）但每次调用多一次指针跳转；`enum` + `match` 是编译期就知道所
+  有可能的具体类型，`match` 直接跳转到对应分支，没有虚表。Python 的方
+  法调用永远是前者的等价物（运行时按对象的 `__class__` 查找方法），完
+  全没有"封闭集合、静态分发"这个选项——这是 Rust 相对 Python 一个纯粹的
+  额外能力，不是"Rust 更啰嗦"的代价。
+- **通用性是有代价的，代价往往不是"多写了几行代码"，而是运行时的一层间
+  接**：P7 把 `Bus` 从"能挂任意实现了 `Device` 的东西"改成"只认这 7 种
+  具体类型"，换来的不是更简洁的代码（字段反而列了一长串），而是编译器
+  能把整个分发过程摊平成一串 `if`/字段访问，不再需要任何运行时结构去
+  "查"该调用谁。**通用抽象的成本不是写代码时看得见的，是运行时才付的。**
+- **`Rc<RefCell<T>>` 是接口形状的产物，不是问题本身的必然要求**：这条已
+  经在上面详细展开过，再强调一遍——遇到"看起来需要共享可变引用"的场景
+  时，先问一句"能不能把这份数据当参数传下去，而不是让对方自己持有一份
+  引用"，往往比直接祭出 `Rc<RefCell<T>>` 更值得先试。
+- **性能有时候来自消除"层与层之间的边界"，而不是让某一层内部算得更
+  快**：P9/P10 优化的函数体本身几乎没有算法层面的改动，省下来的时间全
+  部来自"让编译器能把调用者和被调用者揉成一份连续的代码"。这提示一个排
+  查性能问题的顺序：先看数据结构和所有权模型（P1-P8 的量级），再看函数
+  边界和内联（P9-P10 的量级）——后者往往要等前者的大头都清干净之后才会
+  在 profile 里冒出头。
+
+### 动手练习
+
+1. 找一份 P6 之前的 `bus.rs`（`git show d843c5e:rv64rs/src/bus.rs`，也
+   就是 perf P2 之后、P6 之前的版本），和现在的 `bus.rs` 并排读一遍，亲
+   自数一数：一次 `Bus::read` 调用，在旧版本里要经过几次函数调用/几次
+   间接寻址，在新版本的 `ram`/`stack` 快路径里又是几次？
+2. 试着把 `Bus::read`/`write` 的 `#[inline(always)]` 去掉，重新
+   `cargo build --release` 跑一次 `xv6-time-to-shell`，看看少了内联提示
+   之后编译器是否还会自动内联（这取决于具体的 LLVM 版本和优化等级）、
+   数字变化有多大——亲手验证一次"内联标注到底有没有用"，比读 commit
+   message 里的数字更有说服力。
 
 ---
 
@@ -1054,11 +1312,11 @@ Stage 2 提过的 `Ram::read`/`write`（P3）、Stage 0 提过的 `Bus` 直接�
 
 最后两个提交解决的是"能用"而不是"能跑"的问题：
 
-- `adf4aeb`/`5b72963`：加一个 `xv6-time-to-shell` CLI 模式，从"第一条指令
+- `0c01cb3`/`13a7444`：加一个 `xv6-time-to-shell` CLI 模式，从"第一条指令
   执行前"精确计时到"UART 输出里出现 `$ `"为止，并统计"多少条指令是在分页
   关闭状态下跑的"（`kinit()` 在开分页之前要 zero-fill 全部物理内存，这一
   段 TLB 完全帮不上忙）——这是 Stage 6/性能优化两节提到的数字的来源。
-- `2dc45a9`：给 `xv6-boot` 接上真正的交互式键盘输入。
+- `153eb44`：给 `xv6-boot` 接上真正的交互式键盘输入。
 
 ### 读代码：非阻塞输入的两种写法
 
@@ -1108,7 +1366,8 @@ stdin 的线程，通过 channel 把字节转发给主循环（见 `main.rs` 的
 | 稀疏映射，key 空间小且固定 | `dict`（Python 里没必要换） | 定长数组，直接用 key 当下标 | Stage 4、5（perf P1/P5） |
 | "可能没有值" | `dict.get(k)` 返回 `None`，或裸判断 | `Option<T>` | Stage 4 |
 | 错误处理 | 抛异常（`error()` 里 `raise`），`try/except` | `Result<T, E>` + `?` | Stage 6 全程 |
-| 多个地方共享同一份可变状态 | 默认行为（都是同一个对象引用） | `Rc<RefCell<T>>` | Stage 5、7 |
+| 多个地方共享同一份可变状态 | 默认行为（都是同一个对象引用） | `Rc<RefCell<T>>`（若能改接口形状为显式传参，往往可以完全不需要——见 perf P6-P10） | Stage 5、7、perf P6-P10 |
+| 一组不同类型、统一接口的对象集合 | 永远是运行时按 `__class__` 查找方法（唯一选项） | `Box<dyn Trait>`（虚表，动态分发，通用）或封闭 `enum` + `match`（静态分发，写死类型集合换速度） | Stage 0、perf P6-P7 |
 | 整数运算语义 | 任意精度整数，需要手工 `u64(...)` 截断/`i()` 符号扩展 | 原生定长整数类型 + `wrapping_*`/`as` 转换 | Stage 1 全程 |
 | 反射式地查询对象能力 | `getattr(obj, 'attr', default)` | 提前注册闭包 `impl Fn() -> T` | Stage 5 |
 | 循环耗尽 vs 提前退出的区分 | `for/while ... else` | 哨兵变量 + 显式检查，或 `loop` + `break` 携带值 | Stage 6 |
