@@ -103,7 +103,12 @@ fn run_xv6_time_to_shell(path: &str, address: u64, fs_image: Option<&str>, limit
 
     let start = Instant::now();
     let mut count: u64 = 0;
+    let mut bare_count: u64 = 0; // satp.MODE == Bare: translate() is a no-op, a TLB couldn't help these
     loop {
+        let paging_on = emu.cpu.csrs.get(&rv64rs::csr::SATP).copied().unwrap_or(0) >> 60 == 8;
+        if !paging_on {
+            bare_count += 1;
+        }
         if let Err(e) = emu.cpu.step() {
             eprintln!("\nstopped early after {count} instructions: {e}");
             std::process::exit(1);
@@ -112,9 +117,10 @@ fn run_xv6_time_to_shell(path: &str, address: u64, fs_image: Option<&str>, limit
         if count.is_multiple_of(4096) && output.borrow().ends_with(b"$ ") {
             let elapsed = start.elapsed();
             eprintln!(
-                "\n\n[reached shell prompt after {count} instructions in {:.3}s ({:.0} instr/s)]",
+                "\n\n[reached shell prompt after {count} instructions in {:.3}s ({:.0} instr/s); {bare_count} ({:.1}%) ran with paging off -- a TLB can't help those]",
                 elapsed.as_secs_f64(),
-                count as f64 / elapsed.as_secs_f64()
+                count as f64 / elapsed.as_secs_f64(),
+                100.0 * bare_count as f64 / count as f64,
             );
             std::process::exit(0);
         }
