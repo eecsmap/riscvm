@@ -28,24 +28,43 @@ impl Device for Ram {
         self.data.len() as u64
     }
 
+    // Each arm below slices with a literal length (a..a+2, not a..a+size),
+    // so the compiler knows the copy width at compile time and emits a
+    // single scalar load/store -- the previous version sliced with the
+    // runtime `size` value even inside the 1|2|4|8 match arm, which kept
+    // the copy length dynamic as far as the optimizer could tell and
+    // compiled to a real memmove() call. Profiling showed that call
+    // costing ~5-6% of total sampled time on the boot-to-shell benchmark
+    // (every single instruction fetch and most loads/stores go through
+    // this function).
     fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
+        let a = address as usize;
         match size {
-            1 | 2 | 4 | 8 => {
-                let a = address as usize;
-                let mut buf = [0u8; 8];
-                buf[..size as usize].copy_from_slice(&self.data[a..a + size as usize]);
-                Ok(u64::from_le_bytes(buf))
-            }
+            1 => Ok(self.data[a] as u64),
+            2 => Ok(u16::from_le_bytes(self.data[a..a + 2].try_into().unwrap()) as u64),
+            4 => Ok(u32::from_le_bytes(self.data[a..a + 4].try_into().unwrap()) as u64),
+            8 => Ok(u64::from_le_bytes(self.data[a..a + 8].try_into().unwrap())),
             _ => error(format!("invalid address size {address}")),
         }
     }
 
     fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
+        let a = address as usize;
         match size {
-            1 | 2 | 4 | 8 => {
-                let a = address as usize;
-                let bytes = value.to_le_bytes();
-                self.data[a..a + size as usize].copy_from_slice(&bytes[..size as usize]);
+            1 => {
+                self.data[a] = value as u8;
+                Ok(())
+            }
+            2 => {
+                self.data[a..a + 2].copy_from_slice(&(value as u16).to_le_bytes());
+                Ok(())
+            }
+            4 => {
+                self.data[a..a + 4].copy_from_slice(&(value as u32).to_le_bytes());
+                Ok(())
+            }
+            8 => {
+                self.data[a..a + 8].copy_from_slice(&value.to_le_bytes());
                 Ok(())
             }
             _ => error(format!("invalid address size {address}")),
