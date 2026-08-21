@@ -108,7 +108,7 @@ impl Cpu {
         trap::check_interrupt(self);
 
         let pa = mmu::translate(self, self.pc, Access::X)?;
-        let word = self.bus.borrow().read(pa, 4)? as u32;
+        let word = self.bus.borrow_mut().read(pa, 4)? as u32;
         if word & 0b11 == 0b11 {
             Ok(DecodedInstruction::Full(Instruction::new(word)))
         } else {
@@ -119,13 +119,13 @@ impl Cpu {
     /// Mirrors CPU.read(address, size): translate then read.
     pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
         let pa = mmu::translate(self, address, Access::R)?;
-        self.bus.borrow().read(pa, size)
+        self.bus.borrow_mut().read(pa, size)
     }
 
     /// Mirrors CPU.write(address, size, value): translate then write.
     pub fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
         let pa = mmu::translate(self, address, Access::W)?;
-        self.bus.borrow().write(pa, size, value)
+        self.bus.borrow_mut().write(pa, size, value)
     }
 
     /// Mirrors CPU.execute(instruction) for a full RV64I instruction.

@@ -6,11 +6,9 @@
 //! interrupt-driven completion; the PLIC interrupt line is still raised,
 //! via interrupt_status, for xv6's driver to observe).
 
-use crate::bus::{Bus, Device};
+use crate::bus::Bus;
 use crate::error::{error, EmuError};
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 const PAGE_SIZE: u64 = 0x1000;
 
@@ -58,12 +56,6 @@ const VIRTIO_BLK_T_OUT: u32 = 1; // write
 const SECTOR_SIZE: u64 = 512;
 
 pub struct VirtIOBlk {
-    // Grants access to guest physical memory: the descriptor table,
-    // avail/used rings, and the actual read/write buffers all live in RAM
-    // the driver allocated, addressed by physical address. See cpu.rs's
-    // doc comment on why this is Rc<RefCell<Bus>> (the same bus this
-    // device is itself registered on).
-    bus: Rc<RefCell<Bus>>,
     pub disk: Vec<u8>,
     device_features: u32,
     driver_features: u32,
@@ -79,7 +71,7 @@ pub struct VirtIOBlk {
 }
 
 impl VirtIOBlk {
-    pub fn new(bus: Rc<RefCell<Bus>>, disk_size: u64, disk_image: Option<Vec<u8>>) -> Self {
+    pub fn new(disk_size: u64, disk_image: Option<Vec<u8>>) -> Self {
         let disk = match disk_image {
             Some(mut image) => {
                 if (image.len() as u64) < disk_size {
@@ -90,7 +82,6 @@ impl VirtIOBlk {
             None => vec![0u8; disk_size as usize],
         };
         VirtIOBlk {
-            bus,
             disk,
             device_features: 0,
             driver_features: 0,
@@ -106,127 +97,15 @@ impl VirtIOBlk {
         }
     }
 
-    fn r16(&mut self, addr: u64) -> Result<u16, EmuError> {
-        Ok(self.bus.borrow().read(addr, 2)? as u16)
-    }
-    fn r32(&mut self, addr: u64) -> Result<u32, EmuError> {
-        Ok(self.bus.borrow().read(addr, 4)? as u32)
-    }
-    fn r64(&mut self, addr: u64) -> Result<u64, EmuError> {
-        self.bus.borrow().read(addr, 8)
-    }
-    fn w16(&mut self, addr: u64, value: u16) -> Result<(), EmuError> {
-        self.bus.borrow().write(addr, 2, value as u64)
-    }
-    fn w32(&mut self, addr: u64, value: u32) -> Result<(), EmuError> {
-        self.bus.borrow().write(addr, 4, value as u64)
-    }
-    fn read_bytes(&mut self, addr: u64, n: u64) -> Result<Vec<u8>, EmuError> {
-        let mut out = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            out.push(self.bus.borrow().read(addr + i, 1)? as u8);
-        }
-        Ok(out)
-    }
-    fn write_bytes(&mut self, addr: u64, data: &[u8]) -> Result<(), EmuError> {
-        for (i, &b) in data.iter().enumerate() {
-            self.bus.borrow().write(addr + i as u64, 1, b as u64)?;
-        }
-        Ok(())
-    }
-
-    fn process_queue(&mut self, queue_idx: u32) -> Result<(), EmuError> {
-        if self.queue_ready == 0 || self.queue_num == 0 {
-            return Ok(());
-        }
-
-        let desc_base = self.desc_addr;
-        let avail_base = self.avail_addr;
-        let used_base = self.used_addr;
-
-        let avail_idx = self.r16(avail_base + 2)?;
-        let used_idx_initial = self.r16(used_base + 2)?;
-        let mut last = self.last_avail_idx.get(&queue_idx).copied().unwrap_or(used_idx_initial);
-        let mut used_idx = used_idx_initial;
-
-        while last != avail_idx {
-            let ring_off = avail_base + 4 + (last as u64 % self.queue_num as u64) * 2;
-            let head = self.r16(ring_off)?;
-            let length = self.process_descriptor_chain(desc_base, head)?;
-
-            let used_elem_off = used_base + 4 + (used_idx as u64 % self.queue_num as u64) * 8;
-            self.w32(used_elem_off, head as u32)?;
-            self.w32(used_elem_off + 4, length)?;
-            used_idx = used_idx.wrapping_add(1);
-            self.w16(used_base + 2, used_idx)?;
-            last = last.wrapping_add(1);
-        }
-
-        self.last_avail_idx.insert(queue_idx, last);
-        self.interrupt_status |= 1;
-        Ok(())
-    }
-
-    fn process_descriptor_chain(&mut self, desc_base: u64, head: u16) -> Result<u32, EmuError> {
-        let mut descs: Vec<(u64, u32, u16)> = Vec::new();
-        let mut idx = head;
-        let mut seen = std::collections::HashSet::new();
-        loop {
-            if !seen.insert(idx) {
-                break;
-            }
-            let off = desc_base + idx as u64 * 16;
-            let addr = self.r64(off)?;
-            let length = self.r32(off + 8)?;
-            let flags = self.r16(off + 12)?;
-            let nxt = self.r16(off + 14)?;
-            descs.push((addr, length, flags));
-            if flags & VIRTQ_DESC_F_NEXT != 0 {
-                idx = nxt;
-            } else {
-                break;
-            }
-        }
-
-        if descs.len() < 3 {
-            return Ok(0); // malformed descriptor chain (need header/data/status)
-        }
-
-        let (header_addr, _, _) = descs[0];
-        let (data_addr, data_len, _) = descs[1];
-        let (status_addr, _, _) = descs[descs.len() - 1];
-
-        let req_type = self.r32(header_addr)?;
-        let sector = self.r64(header_addr + 8)?;
-        let offset = sector * SECTOR_SIZE;
-
-        if req_type == VIRTIO_BLK_T_IN {
-            let end = (offset + data_len as u64) as usize;
-            if end > self.disk.len() {
-                self.disk.resize(end, 0);
-            }
-            let chunk = self.disk[offset as usize..end].to_vec();
-            self.write_bytes(data_addr, &chunk)?;
-        } else if req_type == VIRTIO_BLK_T_OUT {
-            let chunk = self.read_bytes(data_addr, data_len as u64)?;
-            let end = (offset + data_len as u64) as usize;
-            if end > self.disk.len() {
-                self.disk.resize(end, 0);
-            }
-            self.disk[offset as usize..end].copy_from_slice(&chunk);
-        } // unsupported request type: silently ignored, matching riscvm's logger.warning-only path
-
-        self.write_bytes(status_addr, &[0])?; // VIRTIO_BLK_S_OK
-        Ok(0)
-    }
-}
-
-impl Device for VirtIOBlk {
-    fn len(&self) -> u64 {
+    pub fn len(&self) -> u64 {
         PAGE_SIZE
     }
 
-    fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
         if size != 4 {
             return error(format!("virtio-mmio register reads must be 4 bytes, got {size} @0x{address:x}"));
         }
@@ -245,7 +124,13 @@ impl Device for VirtIOBlk {
         Ok(value)
     }
 
-    fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
+    /// Takes `bus: &mut Bus` for the QUEUE_NOTIFY case's DMA into guest RAM
+    /// -- this device no longer holds its own `Rc<RefCell<Bus>>` handle
+    /// back to the bus it's registered on (see bus.rs's doc comment on
+    /// `Bus::write`'s VIRTIO arm for why: that reentrant-Rc pattern doesn't
+    /// work any more now that Bus::read/write take `&mut self`, so the
+    /// bus that dispatched this call passes itself in directly instead).
+    pub fn write(&mut self, address: u64, size: u8, value: u64, bus: &mut Bus) -> Result<(), EmuError> {
         if size != 4 {
             return error(format!("virtio-mmio register writes must be 4 bytes, got {size} @0x{address:x}"));
         }
@@ -261,7 +146,7 @@ impl Device for VirtIOBlk {
             DRIVER_DESC_HIGH => self.avail_addr = (self.avail_addr & 0xffff_ffff) | (value << 32),
             DEVICE_DESC_LOW => self.used_addr = (self.used_addr & !0xffff_ffff) | value,
             DEVICE_DESC_HIGH => self.used_addr = (self.used_addr & 0xffff_ffff) | (value << 32),
-            QUEUE_NOTIFY => self.process_queue(v32)?,
+            QUEUE_NOTIFY => self.process_queue(v32, bus)?,
             INTERRUPT_ACK => self.interrupt_status &= !v32,
             STATUS => {
                 self.status = v32;
@@ -278,5 +163,95 @@ impl Device for VirtIOBlk {
             _ => {}
         }
         Ok(())
+    }
+
+    fn process_queue(&mut self, queue_idx: u32, bus: &mut Bus) -> Result<(), EmuError> {
+        if self.queue_ready == 0 || self.queue_num == 0 {
+            return Ok(());
+        }
+
+        let desc_base = self.desc_addr;
+        let avail_base = self.avail_addr;
+        let used_base = self.used_addr;
+
+        let avail_idx = bus.read(avail_base + 2, 2)? as u16;
+        let used_idx_initial = bus.read(used_base + 2, 2)? as u16;
+        let mut last = self.last_avail_idx.get(&queue_idx).copied().unwrap_or(used_idx_initial);
+        let mut used_idx = used_idx_initial;
+
+        while last != avail_idx {
+            let ring_off = avail_base + 4 + (last as u64 % self.queue_num as u64) * 2;
+            let head = bus.read(ring_off, 2)? as u16;
+            let length = self.process_descriptor_chain(desc_base, head, bus)?;
+
+            let used_elem_off = used_base + 4 + (used_idx as u64 % self.queue_num as u64) * 8;
+            bus.write(used_elem_off, 4, head as u64)?;
+            bus.write(used_elem_off + 4, 4, length as u64)?;
+            used_idx = used_idx.wrapping_add(1);
+            bus.write(used_base + 2, 2, used_idx as u64)?;
+            last = last.wrapping_add(1);
+        }
+
+        self.last_avail_idx.insert(queue_idx, last);
+        self.interrupt_status |= 1;
+        Ok(())
+    }
+
+    fn process_descriptor_chain(&mut self, desc_base: u64, head: u16, bus: &mut Bus) -> Result<u32, EmuError> {
+        let mut descs: Vec<(u64, u32, u16)> = Vec::new();
+        let mut idx = head;
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            if !seen.insert(idx) {
+                break;
+            }
+            let off = desc_base + idx as u64 * 16;
+            let addr = bus.read(off, 8)?;
+            let length = bus.read(off + 8, 4)? as u32;
+            let flags = bus.read(off + 12, 2)? as u16;
+            let nxt = bus.read(off + 14, 2)? as u16;
+            descs.push((addr, length, flags));
+            if flags & VIRTQ_DESC_F_NEXT != 0 {
+                idx = nxt;
+            } else {
+                break;
+            }
+        }
+
+        if descs.len() < 3 {
+            return Ok(0); // malformed descriptor chain (need header/data/status)
+        }
+
+        let (header_addr, _, _) = descs[0];
+        let (data_addr, data_len, _) = descs[1];
+        let (status_addr, _, _) = descs[descs.len() - 1];
+
+        let req_type = bus.read(header_addr, 4)? as u32;
+        let sector = bus.read(header_addr + 8, 8)?;
+        let offset = sector * SECTOR_SIZE;
+
+        if req_type == VIRTIO_BLK_T_IN {
+            let end = (offset + data_len as u64) as usize;
+            if end > self.disk.len() {
+                self.disk.resize(end, 0);
+            }
+            let chunk = self.disk[offset as usize..end].to_vec();
+            for (i, &b) in chunk.iter().enumerate() {
+                bus.write(data_addr + i as u64, 1, b as u64)?;
+            }
+        } else if req_type == VIRTIO_BLK_T_OUT {
+            let mut chunk = vec![0u8; data_len as usize];
+            for (i, b) in chunk.iter_mut().enumerate() {
+                *b = bus.read(data_addr + i as u64, 1)? as u8;
+            }
+            let end = (offset + data_len as u64) as usize;
+            if end > self.disk.len() {
+                self.disk.resize(end, 0);
+            }
+            self.disk[offset as usize..end].copy_from_slice(&chunk);
+        } // unsupported request type: silently ignored, matching riscvm's logger.warning-only path
+
+        bus.write(status_addr, 1, 0)?; // VIRTIO_BLK_S_OK
+        Ok(0)
     }
 }

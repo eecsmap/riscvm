@@ -50,8 +50,8 @@ fn run_stack_demo() {
     println!("a0 = {a0} (expected 43, match = {})", a0 == 43);
     println!(
         "stack[0x3000..0x3008) = {}, {}",
-        emu.cpu.bus.borrow().read(0x3000, 4).unwrap(),
-        emu.cpu.bus.borrow().read(0x3004, 4).unwrap()
+        emu.cpu.bus.borrow_mut().read(0x3000, 4).unwrap(),
+        emu.cpu.bus.borrow_mut().read(0x3004, 4).unwrap()
     );
 }
 
