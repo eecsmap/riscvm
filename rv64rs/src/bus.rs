@@ -62,8 +62,12 @@ impl RangeManager {
     }
 
     /// Mirrors RangeManger.add_range: insert keeping `starts` sorted, erroring
-    /// on overflow or overlap with a neighboring range.
-    pub fn add_range(&mut self, range: Range) -> Result<(), EmuError> {
+    /// on overflow or overlap with a neighboring range. Returns the index the
+    /// range landed at, so Bus::add_device can insert its device at the same
+    /// position in its own parallel Vec (see Bus's doc comment: this is what
+    /// lets get_range() hand back a ready-to-use device index instead of a
+    /// Range that then has to be linearly re-matched against every device).
+    pub fn add_range(&mut self, range: Range) -> Result<usize, EmuError> {
         if range.size == 0 {
             return error(format!("invalid range ({}, {})", range.start, range.size));
         }
@@ -82,7 +86,7 @@ impl RangeManager {
             }
             self.starts.push(range.start);
             self.sizes.push(range.size);
-            return Ok(());
+            return Ok(position);
         }
 
         if self.starts[position] == range.start {
@@ -94,12 +98,14 @@ impl RangeManager {
 
         self.starts.insert(position, range.start);
         self.sizes.insert(position, range.size);
-        Ok(())
+        Ok(position)
     }
 
-    /// Mirrors RangeManger.get_range: find the (start,size) covering
-    /// [address, address+size).
-    pub fn get_range(&self, address: u64, size: u64) -> Result<Range, EmuError> {
+    /// Mirrors RangeManger.get_range: find the range covering
+    /// [address, address+size), returning its index (into the same
+    /// position add_range returned) plus its (start,size) for computing
+    /// the device-local offset.
+    pub fn get_range(&self, address: u64, size: u64) -> Result<(usize, Range), EmuError> {
         if size == 0 {
             return error(format!("invalid range ({address}, {size})"));
         }
@@ -114,7 +120,7 @@ impl RangeManager {
         let idx = position - 1;
         let (target_start, target_size) = (self.starts[idx], self.sizes[idx]);
         if address + size <= target_start + target_size {
-            Ok(Range { start: target_start, size: target_size })
+            Ok((idx, Range { start: target_start, size: target_size }))
         } else {
             error(format!(
                 "no device mapped to cover (0x{:x}, 0x{:x})",
@@ -147,9 +153,16 @@ impl Default for RangeManager {
 /// conflict. One shared RefCell<Bus> would panic here (a device can't
 /// re-borrow the very RefCell that's already exclusively borrowed to call
 /// it) -- this bit us during stage 7's VirtIOBlk before add_device().
+///
+/// `devices` is a parallel Vec to `range_manager`'s internal sorted arrays
+/// (same index space -- add_range()/get_range() hand back exactly that
+/// index), so read()/write() go straight from "binary search" to "direct
+/// indexed device access" with no linear re-scan comparing Range structs
+/// afterward. Profiling showed that linear scan (via PartialEq on Range)
+/// costing real time on every single guest memory access.
 pub struct Bus {
     range_manager: RangeManager,
-    devices: Vec<(Range, RefCell<Box<dyn Device>>)>,
+    devices: Vec<RefCell<Box<dyn Device>>>,
 }
 
 impl Bus {
@@ -159,30 +172,19 @@ impl Bus {
 
     pub fn add_device(&mut self, device: Box<dyn Device>, start: u64) -> Result<(), EmuError> {
         let range = Range { start, size: device.len() };
-        self.range_manager.add_range(range)?;
-        self.devices.push((range, RefCell::new(device)));
+        let idx = self.range_manager.add_range(range)?;
+        self.devices.insert(idx, RefCell::new(device));
         Ok(())
     }
 
-    fn find_device(&self, range: Range) -> &RefCell<Box<dyn Device>> {
-        &self
-            .devices
-            .iter()
-            .find(|(r, _)| *r == range)
-            .expect("range_manager returned a range with no matching device")
-            .1
-    }
-
     pub fn read(&self, address: u64, size: u8) -> Result<u64, EmuError> {
-        let range = self.range_manager.get_range(address, size as u64)?;
-        let device = self.find_device(range);
-        device.borrow_mut().read(address - range.start, size)
+        let (idx, range) = self.range_manager.get_range(address, size as u64)?;
+        self.devices[idx].borrow_mut().read(address - range.start, size)
     }
 
     pub fn write(&self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
-        let range = self.range_manager.get_range(address, size as u64)?;
-        let device = self.find_device(range);
-        device.borrow_mut().write(address - range.start, size, value)
+        let (idx, range) = self.range_manager.get_range(address, size as u64)?;
+        self.devices[idx].borrow_mut().write(address - range.start, size, value)
     }
 }
 
