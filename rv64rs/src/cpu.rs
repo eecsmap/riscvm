@@ -64,6 +64,7 @@ pub struct Cpu {
     pub clint: Option<Rc<RefCell<Clint>>>,
     pub uart: Option<Rc<RefCell<Uart>>>,
     pub plic: Option<Rc<RefCell<Plic>>>,
+    pub tlb: mmu::Tlb,
     uart_poll_countdown: i64,
 }
 
@@ -84,6 +85,7 @@ impl Cpu {
             clint: None,
             uart: None,
             plic: None,
+            tlb: mmu::Tlb::new(),
             uart_poll_countdown: 0,
         }
     }

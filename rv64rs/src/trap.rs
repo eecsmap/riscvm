@@ -71,6 +71,15 @@ pub fn csr_write(cpu: &mut Cpu, addr: u32, value: u64) {
     } else {
         cpu.csrs.insert(addr, value);
     }
+    // A satp write can change the active address space (or turn paging on/
+    // off); any cached TLB entries could now point at the wrong PPNs or a
+    // torn-down mapping. Flushing here (rather than relying solely on the
+    // guest issuing SFENCE.VMA afterward) keeps this new TLB from being
+    // observable-behavior-changing: before it existed, every access was a
+    // fresh walk, so nothing could ever have depended on stale mappings.
+    if addr == csr::SATP {
+        cpu.tlb.flush();
+    }
 }
 
 /// Deliver a trap (exception or interrupt), choosing M-mode or S-mode per

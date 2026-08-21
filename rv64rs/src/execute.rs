@@ -10,13 +10,13 @@
 //! it's in the Mnemonic table but has no case in the match, so it falls
 //! through to the same "unimplemented" error there too.
 //!
-//! Stage 6 (this stage): LOAD/STORE (and AMOSWAP.W) now go through
-//! cpu.read()/cpu.write() instead of cpu.bus.read/write directly, so they
-//! pick up Sv39 translation (see mmu.rs) once satp switches paging on.
-//! SFENCE.VMA stays a no-op -- riscvm's own SFENCE_VMA case is `pass`
-//! too, since real hardware's SFENCE.VMA exists to flush a TLB and this
-//! project doesn't model one (that's the stage 8 stretch goal); with no
-//! cache to flush, a fresh translate() on every access is already correct.
+//! Stage 6: LOAD/STORE (and AMOSWAP.W) go through cpu.read()/cpu.write()
+//! instead of cpu.bus.read/write directly, so they pick up Sv39
+//! translation (see mmu.rs) once satp switches paging on.
+//!
+//! perf-P4: SFENCE.VMA now actually does something -- flushes mmu::Tlb
+//! (see mmu.rs for why one exists at all: profiling justified it after
+//! P1-P3 removed the cheaper wins).
 
 use crate::cpu::Cpu;
 use crate::decode::Instruction;
@@ -315,7 +315,10 @@ fn execute_system(instr: &Instruction, cpu: &mut Cpu, default_next: u64) -> Resu
                 Ok(cpu.csrs.get(crate::csr::SEPC))
             }
             (0b0001000, 0b00101) => Ok(default_next), // WFI: interrupts are checked every instruction anyway
-            (0b0001001, _) => Ok(default_next),        // SFENCE.VMA: no-op until the MMU exists
+            (0b0001001, _) => {
+                cpu.tlb.flush(); // SFENCE.VMA: whole-TLB invalidation (see mmu::Tlb::flush)
+                Ok(default_next)
+            }
             (0b0011000, _) => {
                 // MRET
                 let mut mstatus = cpu.csrs.get(crate::csr::MSTATUS);
