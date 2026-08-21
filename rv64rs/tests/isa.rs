@@ -12,7 +12,7 @@
 //!   - td_I's LB/LH/LBU/LHU rows
 //!   - test_sh_stores_halfword
 
-use rv64rs::bus::Bus;
+use rv64rs::bus::{Bus, DeviceImpl};
 use rv64rs::cpu::Cpu;
 use rv64rs::decode::Instruction;
 use rv64rs::ram::Ram;
@@ -32,7 +32,7 @@ fn cpu_with_ram(hex_data: &str) -> Cpu {
         .collect();
     let ram = Ram::with_content(bytes.len() as u64, &bytes);
     let mut bus = Bus::new();
-    bus.add_device(Box::new(ram), 0).unwrap();
+    bus.add_device(DeviceImpl::Ram(ram), 0).unwrap();
     Cpu::new(Rc::new(RefCell::new(bus)))
 }
 
@@ -231,7 +231,7 @@ fn rv64m_extension() {
 fn sh_stores_halfword() {
     let ram = Ram::new(0x100);
     let mut bus = Bus::new();
-    bus.add_device(Box::new(ram), 0).unwrap();
+    bus.add_device(DeviceImpl::Ram(ram), 0).unwrap();
     let mut c = Cpu::new(Rc::new(RefCell::new(bus)));
     c.regs.write(10, 0x20);   // a0: base address
     c.regs.write(11, 0xbeef); // a1: value to store

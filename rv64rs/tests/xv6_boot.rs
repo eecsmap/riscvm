@@ -8,7 +8,7 @@
 //!      the loop it interrupted.
 
 use rv64rs::asm::{encode_j, ZERO};
-use rv64rs::bus::{Bus, SharedDevice};
+use rv64rs::bus::{Bus, DeviceImpl, SharedDevice};
 use rv64rs::clint::Clint;
 use rv64rs::cpu::Cpu;
 use rv64rs::csr;
@@ -63,11 +63,11 @@ fn timer_interrupt_preempts_a_running_loop_via_real_fetch_path() {
         ram.data[b..b + 4].copy_from_slice(&self_jump.to_le_bytes());
     }
     let mut bus = Bus::new();
-    bus.add_device(Box::new(ram), MAIN_LOOP_ADDR).unwrap();
+    bus.add_device(DeviceImpl::Ram(ram), MAIN_LOOP_ADDR).unwrap();
 
     let clint = Rc::new(RefCell::new(Clint::new(0x10000)));
     clint.borrow_mut().mtimecmp[0] = 0; // pending as soon as it's ticked even once
-    bus.add_device(Box::new(SharedDevice(clint.clone())), 0x0200_0000).unwrap();
+    bus.add_device(DeviceImpl::Clint(SharedDevice(clint.clone())), 0x0200_0000).unwrap();
 
     let mut cpu = Cpu::new(Rc::new(RefCell::new(bus)));
     cpu.clint = Some(clint);

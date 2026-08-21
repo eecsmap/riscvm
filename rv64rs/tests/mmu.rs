@@ -1,7 +1,7 @@
 //! Ports tests/test_mmu.py's cases verbatim -- same PTE layout, same
 //! virtual addresses, same expected results.
 
-use rv64rs::bus::Bus;
+use rv64rs::bus::{Bus, DeviceImpl};
 use rv64rs::cpu::Cpu;
 use rv64rs::csr;
 use rv64rs::mmu::{translate, Access, PTE_R, PTE_V, PTE_W};
@@ -13,7 +13,7 @@ const PAGESIZE: u64 = 0x1000;
 
 fn make_cpu(ram_size: u64) -> Cpu {
     let mut bus = Bus::new();
-    bus.add_device(Box::new(Ram::new(ram_size)), 0).unwrap();
+    bus.add_device(DeviceImpl::Ram(Ram::new(ram_size)), 0).unwrap();
     Cpu::new(Rc::new(RefCell::new(bus)))
 }
 

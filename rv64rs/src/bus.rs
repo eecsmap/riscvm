@@ -7,7 +7,12 @@
 //! start addresses) so overlapping/unmapped-range errors match the Python
 //! behavior exactly.
 
+use crate::clint::Clint;
 use crate::error::{error, EmuError};
+use crate::plic::Plic;
+use crate::ram::Ram;
+use crate::uart::Uart;
+use crate::virtio::VirtIOBlk;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -145,6 +150,56 @@ impl Default for RangeManager {
     }
 }
 
+/// A closed set of the concrete device types this emulator ever actually
+/// builds (Emulator uses just Ram; Xv6Emulator adds the other four).
+/// Replaces `Box<dyn Device>` -- same `Vec<RefCell<_>>` + RangeManager
+/// shape as before (see Bus's doc comment for why each slot keeps its own
+/// RefCell), but dispatch through `read`/`write` below is a `match` on a
+/// known-size enum tag rather than a vtable call through a trait object.
+/// Profiling after P1-P5 (see rv64rs/README.md's "Performance
+/// optimization" section) still showed Bus dispatch as a real cost on the
+/// boot-to-shell benchmark once the cheaper HashMap/memmove fixes were
+/// exhausted; this was measured as step P6 against that same benchmark.
+pub enum DeviceImpl {
+    Ram(Ram),
+    Clint(SharedDevice<Clint>),
+    Uart(SharedDevice<Uart>),
+    Plic(SharedDevice<Plic>),
+    VirtIOBlk(SharedDevice<VirtIOBlk>),
+}
+
+impl DeviceImpl {
+    fn len(&self) -> u64 {
+        match self {
+            DeviceImpl::Ram(d) => d.len(),
+            DeviceImpl::Clint(d) => d.len(),
+            DeviceImpl::Uart(d) => d.len(),
+            DeviceImpl::Plic(d) => d.len(),
+            DeviceImpl::VirtIOBlk(d) => d.len(),
+        }
+    }
+
+    fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
+        match self {
+            DeviceImpl::Ram(d) => d.read(address, size),
+            DeviceImpl::Clint(d) => d.read(address, size),
+            DeviceImpl::Uart(d) => d.read(address, size),
+            DeviceImpl::Plic(d) => d.read(address, size),
+            DeviceImpl::VirtIOBlk(d) => d.read(address, size),
+        }
+    }
+
+    fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
+        match self {
+            DeviceImpl::Ram(d) => d.write(address, size, value),
+            DeviceImpl::Clint(d) => d.write(address, size, value),
+            DeviceImpl::Uart(d) => d.write(address, size, value),
+            DeviceImpl::Plic(d) => d.write(address, size, value),
+            DeviceImpl::VirtIOBlk(d) => d.write(address, size, value),
+        }
+    }
+}
+
 /// Each slot gets its own RefCell (rather than one RefCell around the whole
 /// Bus) so that read()/write() only need `&self`: a device like VirtIOBlk
 /// that re-enters the bus mid-dispatch (to read/write guest RAM while
@@ -162,7 +217,7 @@ impl Default for RangeManager {
 /// costing real time on every single guest memory access.
 pub struct Bus {
     range_manager: RangeManager,
-    devices: Vec<RefCell<Box<dyn Device>>>,
+    devices: Vec<RefCell<DeviceImpl>>,
 }
 
 impl Bus {
@@ -170,7 +225,7 @@ impl Bus {
         Bus { range_manager: RangeManager::new(), devices: Vec::new() }
     }
 
-    pub fn add_device(&mut self, device: Box<dyn Device>, start: u64) -> Result<(), EmuError> {
+    pub fn add_device(&mut self, device: DeviceImpl, start: u64) -> Result<(), EmuError> {
         let range = Range { start, size: device.len() };
         let idx = self.range_manager.add_range(range)?;
         self.devices.insert(idx, RefCell::new(device));

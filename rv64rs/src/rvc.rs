@@ -378,12 +378,12 @@ pub fn execute(instr: &CInstruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bus::Bus;
+    use crate::bus::{Bus, DeviceImpl};
     use crate::ram::Ram;
 
     fn cpu() -> Cpu {
         let mut bus = Bus::new();
-        bus.add_device(Box::new(Ram::new(0x10000)), 0).unwrap();
+        bus.add_device(DeviceImpl::Ram(Ram::new(0x10000)), 0).unwrap();
         Cpu::new(std::rc::Rc::new(std::cell::RefCell::new(bus)))
     }
 
