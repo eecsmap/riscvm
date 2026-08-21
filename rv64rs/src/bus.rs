@@ -280,11 +280,21 @@ impl Bus {
         Ok(())
     }
 
-    /// `ram` is checked first (and stack second): both are on the hot path
-    /// (every instruction fetch, most loads/stores, every PTE step of a
-    /// page-table walk); the MMIO devices below are only ever touched by
-    /// explicit device-register accesses, so their relative order among
-    /// themselves doesn't matter.
+    /// `ram` and `stack` are checked inline, before ever making a call:
+    /// together they cover the overwhelming majority of Bus accesses
+    /// (every instruction fetch targets `ram`, and most loads/stores during
+    /// a typical boot target `stack` -- see P9's commit message for why
+    /// `kinit()`'s 128MB zero-fill alone is 97.5% of a full boot). Profiling
+    /// after P9 (which did this same inlined-fast-path/cold-slow-path split
+    /// for mmu::translate) showed `Bus::read`/`write` themselves as the next
+    /// largest non-inlined cost on the hot path for the same reason
+    /// translate() was: fetch/read/write in cpu.rs are all inlined into
+    /// Cpu::step, so every un-inlined function they call is a real call/
+    /// return boundary paid on every single instruction. `read_mmio`/
+    /// `write_mmio` hold the bootloader/CLINT/UART/PLIC/VirtIO cases,
+    /// reached rarely enough that leaving them as real function calls costs
+    /// nothing worth inlining for.
+    #[inline(always)]
     pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
         let sz = size as u64;
         if self.ram_range.contains(address, sz) {
@@ -293,6 +303,10 @@ impl Bus {
         if self.stack_range.contains(address, sz) {
             return self.stack.read(address - self.stack_range.start, size);
         }
+        self.read_mmio(address, size, sz)
+    }
+
+    fn read_mmio(&mut self, address: u64, size: u8, sz: u64) -> Result<u64, EmuError> {
         if self.bootloader_range.contains(address, sz) {
             return self.bootloader.read(address - self.bootloader_range.start, size);
         }
@@ -311,6 +325,7 @@ impl Bus {
         error("no device mapped to this address range")
     }
 
+    #[inline(always)]
     pub fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
         let sz = size as u64;
         if self.ram_range.contains(address, sz) {
@@ -319,6 +334,10 @@ impl Bus {
         if self.stack_range.contains(address, sz) {
             return self.stack.write(address - self.stack_range.start, size, value);
         }
+        self.write_mmio(address, size, value, sz)
+    }
+
+    fn write_mmio(&mut self, address: u64, size: u8, value: u64, sz: u64) -> Result<(), EmuError> {
         if self.bootloader_range.contains(address, sz) {
             return self.bootloader.write(address - self.bootloader_range.start, size, value);
         }
