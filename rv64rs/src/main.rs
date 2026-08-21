@@ -8,7 +8,11 @@
 
 use rv64rs::asm::stack_demo_program;
 use rv64rs::emulator::{Emulator, Xv6Emulator};
+use std::cell::RefCell;
 use std::env;
+use std::io::Write;
+use std::rc::Rc;
+use std::time::Instant;
 
 const REG_NAMES: [&str; 32] = [
     "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4",
@@ -72,6 +76,55 @@ fn run_xv6_boot(path: &str, address: u64, limit: u64, fs_image: Option<&str>) {
     dump_registers(&emu.cpu);
 }
 
+struct Tee(Rc<RefCell<Vec<u8>>>);
+impl Write for Tee {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        std::io::stdout().write_all(buf)?;
+        self.0.borrow_mut().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        std::io::stdout().flush()
+    }
+}
+
+/// Boots straight through to the `$ ` shell prompt and exits immediately,
+/// printing a precise elapsed time from just before the first instruction
+/// executes (kernel + fs image already loaded, devices already wired up)
+/// to the instant the prompt appears in the UART stream. Avoids the
+/// imprecision of eyeballing/killing a long-running `xv6-boot` process by
+/// hand once it reaches the shell and just idles waiting for input.
+fn run_xv6_time_to_shell(path: &str, address: u64, fs_image: Option<&str>, limit: u64) {
+    let code = std::fs::read(path).expect("failed to read kernel image");
+    let disk_image = fs_image.map(|p| std::fs::read(p).expect("failed to read fs image"));
+    let output = Rc::new(RefCell::new(Vec::<u8>::new()));
+    let mut emu = Xv6Emulator::new(&code, address, Some(Box::new(Tee(output.clone()))), None, disk_image)
+        .expect("failed to set up XV6 emulator");
+
+    let start = Instant::now();
+    let mut count: u64 = 0;
+    loop {
+        if let Err(e) = emu.cpu.step() {
+            eprintln!("\nstopped early after {count} instructions: {e}");
+            std::process::exit(1);
+        }
+        count += 1;
+        if count.is_multiple_of(4096) && output.borrow().ends_with(b"$ ") {
+            let elapsed = start.elapsed();
+            eprintln!(
+                "\n\n[reached shell prompt after {count} instructions in {:.3}s ({:.0} instr/s)]",
+                elapsed.as_secs_f64(),
+                count as f64 / elapsed.as_secs_f64()
+            );
+            std::process::exit(0);
+        }
+        if limit != 0 && count >= limit {
+            eprintln!("\n[gave up after {limit} instructions without reaching the shell prompt]");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn run_generic(path: &str, address: u64) {
     let code = std::fs::read(path).expect("failed to read program");
     let mut emu = Emulator::new(&code, address).expect("failed to set up emulator");
@@ -97,6 +150,16 @@ fn main() {
             let limit = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
             let fs_image = args.get(5).map(String::as_str);
             run_xv6_boot(path, address, limit, fs_image);
+        }
+        Some("xv6-time-to-shell") => {
+            let path = args.get(2).map(String::as_str).unwrap_or("../tests/xv6-kernel-fs-small.bin");
+            let address = args
+                .get(3)
+                .map(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).unwrap())
+                .unwrap_or(0x8000_0000);
+            let fs_image = args.get(4).map(String::as_str).or(Some("../tests/fs.img"));
+            let limit = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(2_000_000_000);
+            run_xv6_time_to_shell(path, address, fs_image, limit);
         }
         Some(path) => {
             let address = args
