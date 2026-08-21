@@ -82,7 +82,7 @@ unlimited — stops only on error), and a filesystem image path as further
 positional args:
 
 ```sh
-cargo run --release -- xv6-boot <kernel.bin> [address_hex] [instr_limit] [fs_image]
+cargo run --release -- xv6-boot <kernel.bin> [address_hex] [fs_image] [instr_limit]
 ```
 
 ### Boot all the way to a shell prompt, with precise timing

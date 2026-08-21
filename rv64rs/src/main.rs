@@ -131,6 +131,17 @@ fn run_xv6_time_to_shell(path: &str, address: u64, fs_image: Option<&str>, limit
     }
 }
 
+/// Parses an optional instruction-limit argument, panicking with a clear
+/// message on unparseable input rather than silently falling back to
+/// `default` -- a silent fallback here is exactly what let a real fs.img
+/// path get quietly dropped (unparseable as a number) instead of erroring.
+fn parse_limit(arg: Option<&String>, default: u64) -> u64 {
+    match arg {
+        None => default,
+        Some(s) => s.parse().unwrap_or_else(|_| panic!("invalid instruction limit {s:?}: expected a number")),
+    }
+}
+
 fn run_generic(path: &str, address: u64) {
     let code = std::fs::read(path).expect("failed to read program");
     let mut emu = Emulator::new(&code, address).expect("failed to set up emulator");
@@ -147,14 +158,22 @@ fn main() {
             run_fib(path);
         }
         Some("stack-demo") => run_stack_demo(),
+        // Both xv6-* subcommands take positional args in the SAME order:
+        // <kernel> [address_hex] [fs_image] [instr_limit]. (They didn't
+        // used to -- xv6-boot had fs_image and instr_limit swapped relative
+        // to xv6-time-to-shell, which silently ate a real fs.img path as an
+        // unparseable "instruction limit" that defaulted to 0/unlimited,
+        // producing a kernel boot against a blank synthetic disk instead of
+        // a clear error. Fixed by both reordering these to match and by
+        // parse_limit erroring loudly instead of defaulting on bad input.)
         Some("xv6-boot") => {
             let path = args.get(2).map(String::as_str).unwrap_or("../tests/kernel64gc_nopageflush.bin");
             let address = args
                 .get(3)
                 .map(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).unwrap())
                 .unwrap_or(0x8000_0000);
-            let limit = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
-            let fs_image = args.get(5).map(String::as_str);
+            let fs_image = args.get(4).map(String::as_str);
+            let limit = parse_limit(args.get(5), 0);
             run_xv6_boot(path, address, limit, fs_image);
         }
         Some("xv6-time-to-shell") => {
@@ -164,7 +183,7 @@ fn main() {
                 .map(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).unwrap())
                 .unwrap_or(0x8000_0000);
             let fs_image = args.get(4).map(String::as_str).or(Some("../tests/fs.img"));
-            let limit = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(2_000_000_000);
+            let limit = parse_limit(args.get(5), 2_000_000_000);
             run_xv6_time_to_shell(path, address, fs_image, limit);
         }
         Some(path) => {
@@ -175,7 +194,12 @@ fn main() {
             run_generic(path, address);
         }
         None => {
-            eprintln!("usage: rv64rs fib [path]   |   rv64rs <path> [address_hex]");
+            eprintln!("usage:");
+            eprintln!("  rv64rs fib [path]");
+            eprintln!("  rv64rs stack-demo");
+            eprintln!("  rv64rs xv6-boot [kernel] [address_hex] [fs_image] [instr_limit]");
+            eprintln!("  rv64rs xv6-time-to-shell [kernel] [address_hex] [fs_image] [instr_limit]");
+            eprintln!("  rv64rs <path> [address_hex]");
             std::process::exit(1);
         }
     }
