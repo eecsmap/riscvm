@@ -2,10 +2,12 @@
 //! - `fib` (stage 1): reproduces tests/test_emu.py::test_fib end-to-end.
 //! - `stack-demo` (stage 2): runs a hand-assembled program that actually
 //!   uses the stack region via LOAD/STORE.
+//! - `xv6-boot` (stage 5): boots a kernel image through Xv6Emulator (CLINT/
+//!   UART/PLIC wired up) and prints whatever it writes to the UART.
 //! - anything else: generic run mode for poking at other programs.
 
 use rv64rs::asm::stack_demo_program;
-use rv64rs::emulator::Emulator;
+use rv64rs::emulator::{Emulator, Xv6Emulator};
 use std::env;
 
 const REG_NAMES: [&str; 32] = [
@@ -49,6 +51,26 @@ fn run_stack_demo() {
     );
 }
 
+fn run_xv6_boot(path: &str, address: u64, limit: u64) {
+    let code = std::fs::read(path).expect("failed to read kernel image");
+    let mut emu = Xv6Emulator::new(&code, address, Some(Box::new(std::io::stdout())), None)
+        .expect("failed to set up XV6 emulator");
+
+    let mut count: u64 = 0;
+    let err = loop {
+        if let Err(e) = emu.cpu.step() {
+            break e;
+        }
+        count += 1;
+        if limit != 0 && count >= limit {
+            eprintln!("\n[reached instruction limit {limit}]");
+            std::process::exit(0);
+        }
+    };
+    eprintln!("\nstopped after {count} instructions: {err}");
+    dump_registers(&emu.cpu);
+}
+
 fn run_generic(path: &str, address: u64) {
     let code = std::fs::read(path).expect("failed to read program");
     let mut emu = Emulator::new(&code, address).expect("failed to set up emulator");
@@ -65,6 +87,15 @@ fn main() {
             run_fib(path);
         }
         Some("stack-demo") => run_stack_demo(),
+        Some("xv6-boot") => {
+            let path = args.get(2).map(String::as_str).unwrap_or("../tests/kernel64gc_nopageflush.bin");
+            let address = args
+                .get(3)
+                .map(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).unwrap())
+                .unwrap_or(0x8000_0000);
+            let limit = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
+            run_xv6_boot(path, address, limit);
+        }
         Some(path) => {
             let address = args
                 .get(2)

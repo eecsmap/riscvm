@@ -8,14 +8,41 @@
 //! behavior exactly.
 
 use crate::error::{error, EmuError};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub trait Device {
     fn len(&self) -> u64;
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    fn read(&self, address: u64, size: u8) -> Result<u64, EmuError>;
+    /// Takes &mut self (not &self, despite "read"): real device registers
+    /// can have read side effects -- UART's RBR consumes a byte from the
+    /// queue, PLIC's claim register consumes a pending interrupt. Matches
+    /// the real hardware semantics riscvm's Python read() methods already
+    /// rely on (Python doesn't distinguish const-ness at all).
+    fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError>;
     fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError>;
+}
+
+/// Wraps a device that Cpu also needs direct access to (CLINT for tick(),
+/// UART for poll_input()/interrupt_status(), PLIC for claimable()) so the
+/// same instance can sit on the Bus *and* be held by Cpu -- matching how
+/// riscvm's XV6.__init__ does `self.cpu.uart = uart` after also putting
+/// `uart` on the bus (the same Python object, shared by reference; Rc<RefCell<_>>
+/// is the Rust equivalent of that sharing).
+pub struct SharedDevice<T: Device>(pub Rc<RefCell<T>>);
+
+impl<T: Device> Device for SharedDevice<T> {
+    fn len(&self) -> u64 {
+        self.0.borrow().len()
+    }
+    fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
+        self.0.borrow_mut().read(address, size)
+    }
+    fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
+        self.0.borrow_mut().write(address, size, value)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,13 +156,6 @@ impl Bus {
         Ok(())
     }
 
-    fn find_device(&self, range: Range) -> &(Range, Box<dyn Device>) {
-        self.devices
-            .iter()
-            .find(|(r, _)| *r == range)
-            .expect("range_manager returned a range with no matching device")
-    }
-
     fn find_device_mut(&mut self, range: Range) -> &mut (Range, Box<dyn Device>) {
         self.devices
             .iter_mut()
@@ -143,10 +163,11 @@ impl Bus {
             .expect("range_manager returned a range with no matching device")
     }
 
-    pub fn read(&self, address: u64, size: u8) -> Result<u64, EmuError> {
+    pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
         let range = self.range_manager.get_range(address, size as u64)?;
-        let (r, device) = self.find_device(range);
-        device.read(address - r.start, size)
+        let (r, device) = self.find_device_mut(range);
+        let start = r.start;
+        device.read(address - start, size)
     }
 
     pub fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
@@ -170,7 +191,7 @@ mod tests {
     // Mirrors tests/test_bus.py::test_invalid_address
     #[test]
     fn test_invalid_address() {
-        let bus = Bus::new();
+        let mut bus = Bus::new();
         assert!(bus.read(0, 4).is_err());
     }
 }

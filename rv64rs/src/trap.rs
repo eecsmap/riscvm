@@ -4,11 +4,6 @@
 //! pop_off() manipulate sstatus.SIE) and trap delivery (raise_trap,
 //! check_interrupt).
 //!
-//! check_interrupt()'s PLIC half is not wired up yet (no plic.rs until
-//! stage 5); it behaves the same way Python's does when cpu.plic is None
-//! (SEIP simply never gets set by hardware here, but can still be set/read
-//! directly via CSR access).
-
 use crate::cpu::Cpu;
 use crate::csr;
 
@@ -24,6 +19,7 @@ pub const MSTATUS_SPP: u64 = 1 << 8;
 pub const MSTATUS_MPP: u64 = 0b11 << 11;
 
 pub const MIP_MTIP: u64 = 1 << 7;
+pub const MIP_SEIP: u64 = 1 << 9;
 
 // interrupt cause numbers (privileged spec table 3.6)
 pub const SUPERVISOR_SOFTWARE_INTERRUPT: u64 = 1;
@@ -116,15 +112,18 @@ pub fn raise_trap(cpu: &mut Cpu, cause: u64, is_interrupt: bool, tval: u64) -> u
     }
 }
 
-/// Update MIP's hardware-driven bits (MTIP from CLINT; SEIP from PLIC is
-/// stage 5) and, if an enabled interrupt is pending and would actually be
-/// taken at the current privilege/mstatus.[M|S]IE, deliver it.
+/// Update MIP's hardware-driven bits (MTIP from CLINT, SEIP from PLIC) and,
+/// if an enabled interrupt is pending and would actually be taken at the
+/// current privilege/mstatus.[M|S]IE, deliver it.
 ///
 /// Returns true if a trap was taken (pc already updated), else false.
 pub fn check_interrupt(cpu: &mut Cpu) -> bool {
     let mut mip = cpu.csrs.get(&csr::MIP).copied().unwrap_or(0);
     if let Some(clint) = &cpu.clint {
-        mip = if clint.pending() { mip | MIP_MTIP } else { mip & !MIP_MTIP };
+        mip = if clint.borrow().pending() { mip | MIP_MTIP } else { mip & !MIP_MTIP };
+    }
+    if let Some(plic) = &cpu.plic {
+        mip = if plic.borrow().claimable(1) { mip | MIP_SEIP } else { mip & !MIP_SEIP };
     }
     cpu.csrs.insert(csr::MIP, mip);
 

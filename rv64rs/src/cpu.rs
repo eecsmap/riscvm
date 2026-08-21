@@ -1,18 +1,19 @@
 //! Corresponds to riscvm/cpu.py: owns the register file, pc, and bus, and
 //! drives fetch/execute.
 //!
-//! Stage 3 adds RVC dispatch: fetch() reads 4 bytes (over-reading is fine
-//! for a compressed instruction -- only the low 16 bits matter, same as
-//! cpu.py's fetch() comment about RVC constructors masking down to their
-//! own width) and picks full RV64I vs 16-bit RVC by the low 2 bits, exactly
-//! like cpu.py's `match data & 0b11`.
+//! Stage 3 added RVC dispatch on fetch()'s low 2 bits. Stage 4 added CSR/
+//! privilege-level state. Stage 5 (this stage) wires fetch() up the same
+//! way cpu.py's real fetch() works: tick the CLINT, periodically poll the
+//! UART for input, check for a deliverable interrupt, *then* fetch --
+//! matching real hardware's "interrupts are sampled between instructions".
 //!
-//! Stage 4 adds CSR/privilege-level state (cpu.csrs, cpu.mode) and a
-//! cpu.clint slot for trap.rs's check_interrupt() -- see trap.rs and
-//! clint.rs. UART polling and MMU translation are still later-stage
-//! additions; fetch() doesn't yet call check_interrupt() itself the way
-//! cpu.py's does (that per-instruction interrupt-checking loop is a
-//! stage 5 concern, once there's a real device wired up to observe it).
+//! cpu.clint/uart/plic are Rc<RefCell<_>> (see bus::SharedDevice) because
+//! the same instance also needs to live on the Bus for guest-code MMIO
+//! access -- the Rust equivalent of riscvm's XV6.__init__ putting the same
+//! Python object on both the bus and cpu.uart/clint/plic.
+//!
+//! MMU translation (mmu.py's `translate()` wrapping every bus access) is
+//! still a later-stage addition (stage 6).
 
 use crate::bus::Bus;
 use crate::clint::Clint;
@@ -20,14 +21,24 @@ use crate::csr;
 use crate::decode::Instruction;
 use crate::error::{error, EmuError};
 use crate::execute;
+use crate::plic::Plic;
 use crate::register::Registers;
 use crate::rvc::{self, CInstruction};
+use crate::trap;
+use crate::uart::Uart;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub enum DecodedInstruction {
     Full(Instruction),
     Compressed(CInstruction),
 }
+
+/// Instructions between uart.poll_input() calls (it's a real read() on the
+/// input source; a human typing is plenty responsive checked this often).
+/// Same constant/reasoning as cpu.py's UART_POLL_INTERVAL.
+const UART_POLL_INTERVAL: i64 = 4096;
 
 pub struct Cpu {
     pub regs: Registers,
@@ -35,7 +46,10 @@ pub struct Cpu {
     pub bus: Bus,
     pub csrs: HashMap<u32, u64>,
     pub mode: u8,
-    pub clint: Option<Clint>,
+    pub clint: Option<Rc<RefCell<Clint>>>,
+    pub uart: Option<Rc<RefCell<Uart>>>,
+    pub plic: Option<Rc<RefCell<Plic>>>,
+    uart_poll_countdown: i64,
 }
 
 impl Cpu {
@@ -46,12 +60,36 @@ impl Cpu {
         let mut csrs = HashMap::new();
         csrs.insert(csr::MSTATUS, 0x000a_0000_0000);
         csrs.insert(csr::MIE, 0x222);
-        Cpu { regs: Registers::new(), pc: 0, bus, csrs, mode: csr::PRIV_M, clint: None }
+        Cpu {
+            regs: Registers::new(),
+            pc: 0,
+            bus,
+            csrs,
+            mode: csr::PRIV_M,
+            clint: None,
+            uart: None,
+            plic: None,
+            uart_poll_countdown: 0,
+        }
     }
 
-    /// Mirrors CPU.fetch()'s `match data & 0b11` dispatch between full
-    /// RV64I (0b11) and compressed (anything else) instructions.
-    pub fn fetch(&self) -> Result<DecodedInstruction, EmuError> {
+    /// Mirrors CPU.fetch(): tick the CLINT, periodically poll UART input,
+    /// check for a deliverable interrupt, then read one instruction word
+    /// at pc and dispatch on the low 2 bits between full RV64I (0b11) and
+    /// compressed (anything else).
+    pub fn fetch(&mut self) -> Result<DecodedInstruction, EmuError> {
+        if let Some(clint) = &self.clint {
+            clint.borrow_mut().tick();
+        }
+        if let Some(uart) = &self.uart {
+            self.uart_poll_countdown -= 1;
+            if self.uart_poll_countdown <= 0 {
+                uart.borrow_mut().poll_input();
+                self.uart_poll_countdown = UART_POLL_INTERVAL;
+            }
+        }
+        trap::check_interrupt(self);
+
         let word = self.bus.read(self.pc, 4)? as u32;
         if word & 0b11 == 0b11 {
             Ok(DecodedInstruction::Full(Instruction::new(word)))

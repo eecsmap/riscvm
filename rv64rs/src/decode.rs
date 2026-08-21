@@ -84,13 +84,13 @@ mod tests {
     // Cross-checked against rv64i.py's _test_sections() doctests.
     #[test]
     fn imm_i_sign_extends() {
-        let neg = Instruction::new(0b1000000_00001_00000_000_00000_0000000);
+        let neg = Instruction::new(0b1000_0000_0001_0000_0000_0000_0000_0000);
         assert_eq!(neg.imm_i, -2047);
     }
 
     #[test]
     fn field_extraction() {
-        let w = Instruction::new(0b0000101_00010_00001_011_00100_0000110);
+        let w = Instruction::new(0b0000_1010_0010_0000_1011_0010_0000_0110);
         assert_eq!(w.opcode, 6);
         assert_eq!(w.rd, 4);
         assert_eq!(w.funct3, 3);

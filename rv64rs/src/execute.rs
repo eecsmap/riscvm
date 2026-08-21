@@ -34,6 +34,7 @@ const OPCODE_BRANCH: u32 = 0x63;
 const OPCODE_JALR: u32 = 0x67;
 const OPCODE_JAL: u32 = 0x6f;
 const OPCODE_SYSTEM: u32 = 0x73;
+const OPCODE_AMO: u32 = 0x2f;
 
 /// Sign-extend the low `bits` bits of a value already sitting in a u64
 /// (used for LB/LH/LW, whose loaded width is narrower than the 64-bit
@@ -222,6 +223,24 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
         }
         OPCODE_MISC_MEM => Ok(default_next), // FENCE / FENCE.I: no-op at this stage
         OPCODE_SYSTEM => execute_system(instr, cpu, default_next),
+        OPCODE_AMO => {
+            // Only AMOSWAP.W is implemented, matching riscvm's own actor():
+            // it's the only AMO variant that ever got a case there (xv6's
+            // spinlocks -- initlock/acquire -- are the only thing needing
+            // one). funct5 is funct7's top 5 bits (funct7 >> 2); the low 2
+            // bits are aq/rl ordering flags this single-threaded emulator
+            // has no reason to model.
+            let funct5 = instr.funct7 >> 2;
+            if instr.funct3 == 0x2 && funct5 == 0b00001 {
+                let addr = cpu.regs.read(instr.rs1);
+                let old = sext64(cpu.bus.read(addr, 4)?, 32);
+                cpu.bus.write(addr, 4, cpu.regs.read(instr.rs2))?;
+                cpu.regs.write(instr.rd, old);
+                Ok(default_next)
+            } else {
+                cpu.illegal_instruction(instr)
+            }
+        }
         _ => cpu.illegal_instruction(instr),
     }
 }

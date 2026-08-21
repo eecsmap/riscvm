@@ -1,12 +1,24 @@
-//! Corresponds to the plain `Emulator` class in riscvm/emulator.py (not the
-//! `XV6` subclass -- CLINT/UART/PLIC/VirtIO wiring is later stages). Loads
-//! a raw program at `address`, plus a 128MB scratch region right after it
-//! for stack/bss, exactly like emulator.py's Emulator.__init__.
+//! Corresponds to riscvm/emulator.py's `Emulator` and `XV6` classes.
+//!
+//! `Emulator` loads a raw program at `address` plus a 128MB scratch region
+//! right after it for stack/bss -- no devices, matching emulator.py's
+//! plain Emulator.__init__.
+//!
+//! `Xv6Emulator` (this stage) additionally wires up CLINT, UART, and PLIC
+//! (VirtIO is stage 7) and starts execution at a tiny bootloader at 0x1000
+//! that jumps into the kernel at `address`, matching XV6.__init__ exactly
+//! -- same bootloader bytes, same MMIO addresses.
 
-use crate::bus::{Bus, Device};
+use crate::bus::{Bus, Device, SharedDevice};
+use crate::clint::Clint;
 use crate::cpu::Cpu;
 use crate::error::EmuError;
+use crate::plic::Plic;
 use crate::ram::Ram;
+use crate::uart::Uart;
+use std::cell::RefCell;
+use std::io::{Read, Write};
+use std::rc::Rc;
 
 const STACK_SIZE: u64 = 0x0800_0000; // 128MB, same constant as emulator.py
 
@@ -40,4 +52,77 @@ impl Emulator {
             }
         }
     }
+}
+
+const CLINT_BASE: u64 = 0x0200_0000;
+const CLINT_SIZE: u64 = 0x1_0000;
+const UART_BASE: u64 = 0x1000_0000;
+const UART_SIZE: u64 = 0x100;
+const UART0_IRQ: u32 = 10;
+const PLIC_BASE: u64 = 0x0C00_0000;
+const PLIC_SIZE: u64 = 0x0FFF_FFFF - PLIC_BASE + 1;
+const BOOTLOADER_ADDR: u64 = 0x1000;
+// Same bytes as emulator.py's XV6.__init__: a tiny stub that jumps into
+// the kernel image at `address` (encoded into the bytes below).
+const BOOTLOADER_HEX: &str = "9702000013868202732540f183b5020283b282016780020000000080000000000000008700000000";
+
+pub struct Xv6Emulator {
+    pub cpu: Cpu,
+}
+
+impl Xv6Emulator {
+    pub fn new(
+        program: &[u8],
+        address: u64,
+        uart_output: Option<Box<dyn Write>>,
+        uart_input: Option<Box<dyn Read>>,
+    ) -> Result<Self, EmuError> {
+        // pad up to the next page boundary: a raw `objcopy -O binary` image
+        // doesn't always include .bss, so the kernel can genuinely read/
+        // write just past the loaded bytes before reaching the stack --
+        // that gap needs to be real, zeroed RAM.
+        let stack_begin = ((program.len() as u64 + 0xfff) & !0xfff) + address;
+        let ram = Ram::with_content(stack_begin - address, program);
+        let stack = Ram::new(STACK_SIZE);
+
+        let mut bus = Bus::new();
+        bus.add_device(Box::new(ram), address)?;
+        bus.add_device(Box::new(stack), stack_begin)?;
+
+        let clint = Rc::new(RefCell::new(Clint::new(CLINT_SIZE)));
+        bus.add_device(Box::new(SharedDevice(clint.clone())), CLINT_BASE)?;
+
+        let uart = Rc::new(RefCell::new(Uart::new(UART_SIZE, uart_output, uart_input)));
+        bus.add_device(Box::new(SharedDevice(uart.clone())), UART_BASE)?;
+
+        let mut plic = Plic::new(PLIC_SIZE);
+        let uart_for_plic = uart.clone();
+        plic.register_irq(UART0_IRQ, move || uart_for_plic.borrow().interrupt_status());
+        let plic = Rc::new(RefCell::new(plic));
+        bus.add_device(Box::new(SharedDevice(plic.clone())), PLIC_BASE)?;
+
+        let bootloader_bytes = hex_decode(BOOTLOADER_HEX);
+        let bootloader = Ram::with_content(bootloader_bytes.len() as u64, &bootloader_bytes);
+        bus.add_device(Box::new(bootloader), BOOTLOADER_ADDR)?;
+
+        let mut cpu = Cpu::new(bus);
+        cpu.clint = Some(clint);
+        cpu.uart = Some(uart);
+        cpu.plic = Some(plic);
+        cpu.pc = BOOTLOADER_ADDR;
+
+        Ok(Xv6Emulator { cpu })
+    }
+
+    pub fn run(&mut self) -> EmuError {
+        loop {
+            if let Err(e) = self.cpu.step() {
+                return e;
+            }
+        }
+    }
+}
+
+fn hex_decode(s: &str) -> Vec<u8> {
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
 }

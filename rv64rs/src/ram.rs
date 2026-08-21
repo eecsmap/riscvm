@@ -28,7 +28,7 @@ impl Device for Ram {
         self.data.len() as u64
     }
 
-    fn read(&self, address: u64, size: u8) -> Result<u64, EmuError> {
+    fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
         match size {
             1 | 2 | 4 | 8 => {
                 let a = address as usize;

@@ -1,8 +1,9 @@
 //! Ports tests/test_trap.py's CSR/trap/interrupt cases verbatim (same
 //! instruction words / CSR values / expected results). The two PLIC-only
-//! cases in that file (test_plic_claim_respects_priority_enable_and_threshold,
-//! test_plic_threshold_masks_low_priority) don't touch CPU at all and are
-//! deferred to stage 5, when plic.rs exists.
+//! cases in that file now live in plic.rs's own unit tests instead
+//! (test_plic_claim_respects_priority_enable_and_threshold,
+//! test_plic_threshold_masks_low_priority) since they don't touch CPU at
+//! all -- same reasoning as rvc.rs owning its own decode/execute tests.
 
 use rv64rs::bus::Bus;
 use rv64rs::clint::Clint;
@@ -11,6 +12,8 @@ use rv64rs::csr;
 use rv64rs::decode::Instruction;
 use rv64rs::ram::Ram;
 use rv64rs::trap::{check_interrupt, csr_read, csr_write, raise_trap, MSTATUS_MIE, MSTATUS_SIE};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn cpu() -> Cpu {
     let mut bus = Bus::new();
@@ -152,7 +155,7 @@ fn wfi_is_a_noop() {
 #[test]
 fn clint_mtip_always_taken_in_m_mode_target_when_below_m() {
     let mut c = cpu();
-    let mut clint = Clint::new();
+    let mut clint = Clint::new(0x10000);
     clint.mtimecmp[0] = 5;
     c.mode = csr::PRIV_S;
     csr_write(&mut c, csr::MIE, 1 << 7); // MTIE
@@ -162,7 +165,7 @@ fn clint_mtip_always_taken_in_m_mode_target_when_below_m() {
     for _ in 0..5 {
         clint.tick();
     }
-    c.clint = Some(clint);
+    c.clint = Some(Rc::new(RefCell::new(clint)));
 
     assert!(check_interrupt(&mut c));
     assert_eq!(c.pc, 0x5000);
@@ -173,7 +176,7 @@ fn clint_mtip_always_taken_in_m_mode_target_when_below_m() {
 #[test]
 fn clint_mtip_not_delivered_when_mtie_disabled() {
     let mut c = cpu();
-    let mut clint = Clint::new();
+    let mut clint = Clint::new(0x10000);
     clint.mtimecmp[0] = 5;
     c.mode = csr::PRIV_S;
     csr_write(&mut c, csr::MIE, 0); // MTIE off
@@ -182,7 +185,7 @@ fn clint_mtip_not_delivered_when_mtie_disabled() {
     for _ in 0..10 {
         clint.tick();
     }
-    c.clint = Some(clint);
+    c.clint = Some(Rc::new(RefCell::new(clint)));
 
     assert!(!check_interrupt(&mut c));
     assert_eq!(c.pc, 0x1000);
@@ -191,7 +194,7 @@ fn clint_mtip_not_delivered_when_mtie_disabled() {
 #[test]
 fn clint_mtip_never_delegated_even_if_mideleg_says_so() {
     let mut c = cpu();
-    let mut clint = Clint::new();
+    let mut clint = Clint::new(0x10000);
     clint.mtimecmp[0] = 5;
     c.mode = csr::PRIV_S;
     csr_write(&mut c, csr::MIDELEG, 0xffff);
@@ -203,7 +206,7 @@ fn clint_mtip_never_delegated_even_if_mideleg_says_so() {
     for _ in 0..5 {
         clint.tick();
     }
-    c.clint = Some(clint);
+    c.clint = Some(Rc::new(RefCell::new(clint)));
 
     assert!(check_interrupt(&mut c));
     assert_eq!(c.mode, csr::PRIV_M);
