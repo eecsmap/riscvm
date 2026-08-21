@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Staged Rust reimplementation of riscvm, mirroring its Python module layout"
 
+[[bin]]
+name = "rv64rs"
+path = "src/main.rs"
+
 [lib]
 name = "rv64rs"
 path = "src/lib.rs"
