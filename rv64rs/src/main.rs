@@ -55,10 +55,61 @@ fn run_stack_demo() {
     );
 }
 
+/// A background thread does blocking reads on real stdin (a terminal's
+/// stdin only ever delivers a byte when the user has actually typed one,
+/// so blocking there is fine) and forwards bytes through this channel;
+/// Read::read() below drains whatever's currently queued *without*
+/// blocking. That's what Uart::poll_input() needs: cpu.rs calls it
+/// periodically from inside the single-threaded instruction loop, so a
+/// blocking read there would freeze emulation entirely until someone
+/// pressed a key (see riscvm's own emulator.py, which reaches for
+/// `os.set_blocking(fd, False)` for the same reason -- this is that same
+/// non-blocking requirement, done via a channel instead of a raw fcntl
+/// call so it doesn't need a platform-specific O_NONBLOCK constant or an
+/// external dependency).
+struct StdinChannel(std::sync::mpsc::Receiver<u8>);
+
+impl std::io::Read for StdinChannel {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut n = 0;
+        while n < buf.len() {
+            match self.0.try_recv() {
+                Ok(b) => {
+                    buf[n] = b;
+                    n += 1;
+                }
+                Err(_) => break, // nothing queued right now -- not EOF, just empty
+            }
+        }
+        Ok(n)
+    }
+}
+
+fn spawn_stdin_reader() -> StdinChannel {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let mut stdin = std::io::stdin();
+        let mut byte = [0u8; 1];
+        loop {
+            match stdin.read(&mut byte) {
+                Ok(0) | Err(_) => break, // EOF or a real error: stop feeding input
+                Ok(_) => {
+                    if tx.send(byte[0]).is_err() {
+                        break; // receiving end (the emulator process) is gone
+                    }
+                }
+            }
+        }
+    });
+    StdinChannel(rx)
+}
+
 fn run_xv6_boot(path: &str, address: u64, limit: u64, fs_image: Option<&str>) {
     let code = std::fs::read(path).expect("failed to read kernel image");
     let disk_image = fs_image.map(|p| std::fs::read(p).expect("failed to read fs image"));
-    let mut emu = Xv6Emulator::new(&code, address, Some(Box::new(std::io::stdout())), None, disk_image)
+    let uart_input: Option<Box<dyn std::io::Read>> = Some(Box::new(spawn_stdin_reader()));
+    let mut emu = Xv6Emulator::new(&code, address, Some(Box::new(std::io::stdout())), uart_input, disk_image)
         .expect("failed to set up XV6 emulator");
 
     let mut count: u64 = 0;

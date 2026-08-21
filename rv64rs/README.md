@@ -228,8 +228,14 @@ the TLB, this project doesn't model memory latency at all (`Ram` is a flat
 here -- it would only be useful as an observability/teaching tool (hit-rate
 statistics), and would cost bookkeeping overhead rather than save any.
 
+`xv6-boot` is fully interactive: type at it (a real shell, `ls`/`cat`/`echo`
+all work against the real filesystem image) the same way you would with
+riscvm's own Python CLI. Under the hood a background thread does blocking
+reads on stdin and forwards bytes through a channel, so the emulator's
+single-threaded instruction loop never blocks waiting for a keypress (see
+`spawn_stdin_reader()` in `main.rs`) -- `xv6-time-to-shell` doesn't wire
+this up, since it's meant to run unattended and exit the instant it sees
+the prompt.
+
 Also not implemented, matching riscvm's own current scope: floating-point
-(F/D extensions), most AMO variants beyond AMOSWAP.W, EBREAK, and real
-interactive UART input (the emulator can print output over UART, but
-`--uart-input` isn't wired up to this crate's CLI the way it is in riscvm's
-Python `emulator.py`).
+(F/D extensions), most AMO variants beyond AMOSWAP.W, and EBREAK.
