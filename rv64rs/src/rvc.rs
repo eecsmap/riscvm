@@ -384,7 +384,7 @@ mod tests {
     fn cpu() -> Cpu {
         let mut bus = Bus::new();
         bus.set_ram(Ram::new(0x10000), 0).unwrap();
-        Cpu::new(std::rc::Rc::new(std::cell::RefCell::new(bus)))
+        Cpu::new(bus)
     }
 
     // rd'/rs1' = a1 (x11, compressed raw 3), rs2' = a5 (x15, compressed raw 7)

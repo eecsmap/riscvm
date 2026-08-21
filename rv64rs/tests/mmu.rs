@@ -6,21 +6,19 @@ use rv64rs::cpu::Cpu;
 use rv64rs::csr;
 use rv64rs::mmu::{translate, Access, PTE_R, PTE_V, PTE_W};
 use rv64rs::ram::Ram;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 const PAGESIZE: u64 = 0x1000;
 
 fn make_cpu(ram_size: u64) -> Cpu {
     let mut bus = Bus::new();
     bus.set_ram(Ram::new(ram_size), 0).unwrap();
-    Cpu::new(Rc::new(RefCell::new(bus)))
+    Cpu::new(bus)
 }
 
 fn write_pte(cpu: &mut Cpu, table_ppn: u64, index: u64, target_ppn: u64, flags: u64) {
     let addr = table_ppn * PAGESIZE + index * 8;
     let pte = (target_ppn << 10) | flags;
-    cpu.bus.borrow_mut().write(addr, 8, pte).unwrap();
+    cpu.bus.write(addr, 8, pte).unwrap();
 }
 
 #[test]
@@ -71,7 +69,7 @@ fn sv39_cpu_read_write_end_to_end() {
     c.write(va, 8, 0x1122334455667788).unwrap();
     assert_eq!(c.read(va, 8).unwrap(), 0x1122334455667788);
     // confirm it actually landed at the translated physical address
-    assert_eq!(c.bus.borrow_mut().read(data_ppn * PAGESIZE + offset, 8).unwrap(), 0x1122334455667788);
+    assert_eq!(c.bus.read(data_ppn * PAGESIZE + offset, 8).unwrap(), 0x1122334455667788);
 }
 
 #[test]

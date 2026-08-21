@@ -38,7 +38,7 @@ impl Emulator {
         bus.set_ram(ram, address)?;
         bus.set_stack(stack, stack_begin)?;
 
-        let mut cpu = Cpu::new(Rc::new(RefCell::new(bus)));
+        let mut cpu = Cpu::new(bus);
         cpu.pc = address;
         Ok(Emulator { cpu })
     }
@@ -119,7 +119,7 @@ impl Xv6Emulator {
         let bootloader = Ram::with_content(bootloader_bytes.len() as u64, &bootloader_bytes);
         bus.set_bootloader(bootloader, BOOTLOADER_ADDR)?;
 
-        let mut cpu = Cpu::new(Rc::new(RefCell::new(bus)));
+        let mut cpu = Cpu::new(bus);
         cpu.clint = Some(clint);
         cpu.uart = Some(uart);
         cpu.plic = Some(plic);

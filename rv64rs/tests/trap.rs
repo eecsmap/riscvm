@@ -18,7 +18,7 @@ use std::rc::Rc;
 fn cpu() -> Cpu {
     let mut bus = Bus::new();
     bus.set_ram(Ram::new(0x10000), 0).unwrap();
-    Cpu::new(Rc::new(RefCell::new(bus)))
+    Cpu::new(bus)
 }
 
 #[test]

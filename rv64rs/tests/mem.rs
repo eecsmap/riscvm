@@ -18,6 +18,6 @@ fn stack_demo_program_uses_the_stack_correctly() {
 
     // Confirm the intermediate stack writes actually landed in the stack
     // device (not somewhere else): sp was set to 0x3000.
-    assert_eq!(emu.cpu.bus.borrow_mut().read(0x3000, 4).unwrap(), 42);
-    assert_eq!(emu.cpu.bus.borrow_mut().read(0x3004, 4).unwrap(), 43);
+    assert_eq!(emu.cpu.bus.read(0x3000, 4).unwrap(), 42);
+    assert_eq!(emu.cpu.bus.read(0x3004, 4).unwrap(), 43);
 }
