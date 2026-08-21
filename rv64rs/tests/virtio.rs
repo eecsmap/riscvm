@@ -1,7 +1,7 @@
 //! Ports tests/test_virtio.py's cases verbatim -- same register offsets,
 //! same descriptor-chain layout, same expected results.
 
-use rv64rs::bus::{Bus, SharedDevice};
+use rv64rs::bus::{Bus, DeviceImpl, SharedDevice};
 use rv64rs::ram::Ram;
 use rv64rs::virtio::VirtIOBlk;
 use std::cell::RefCell;
@@ -37,17 +37,17 @@ const VIRTIO_BLK_T_OUT: u64 = 1;
 
 fn make_device() -> (Rc<RefCell<Bus>>, Rc<RefCell<VirtIOBlk>>) {
     let mut bus = Bus::new();
-    bus.add_device(Box::new(Ram::new(0x10000)), 0).unwrap();
+    bus.add_device(DeviceImpl::Ram(Ram::new(0x10000)), 0).unwrap();
     let bus = Rc::new(RefCell::new(bus));
     let dev = Rc::new(RefCell::new(VirtIOBlk::new(bus.clone(), 8 * 1024 * 1024, None)));
-    bus.borrow_mut().add_device(Box::new(SharedDevice(dev.clone())), VIRTIO_BASE).unwrap();
+    bus.borrow_mut().add_device(DeviceImpl::VirtIOBlk(SharedDevice(dev.clone())), VIRTIO_BASE).unwrap();
     (bus, dev)
 }
 
 #[test]
 fn disk_image_backs_the_synthetic_disk() {
     let mut bus = Bus::new();
-    bus.add_device(Box::new(Ram::new(0x10000)), 0).unwrap();
+    bus.add_device(DeviceImpl::Ram(Ram::new(0x10000)), 0).unwrap();
     let bus = Rc::new(RefCell::new(bus));
     let mut image = vec![0xABu8; 512];
     image.extend(vec![0u8; 512]); // sector 0 = 0xAB..., sector 1 = zero
@@ -59,7 +59,7 @@ fn disk_image_backs_the_synthetic_disk() {
 #[test]
 fn disk_image_smaller_than_disk_size_is_zero_padded() {
     let mut bus = Bus::new();
-    bus.add_device(Box::new(Ram::new(0x10000)), 0).unwrap();
+    bus.add_device(DeviceImpl::Ram(Ram::new(0x10000)), 0).unwrap();
     let bus = Rc::new(RefCell::new(bus));
     let dev = VirtIOBlk::new(bus, 4096, Some(vec![1, 2, 3]));
     assert_eq!(dev.disk.len(), 4096);
