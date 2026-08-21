@@ -1,0 +1,14 @@
+[package]
+name = "rv64rs"
+version = "0.1.0"
+edition = "2021"
+description = "Staged Rust reimplementation of riscvm, mirroring its Python module layout"
+
+[lib]
+name = "rv64rs"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
