@@ -112,12 +112,31 @@ impl Default for Tlb {
 /// either (see the perf-P3 commit's measurement: ~46-97.5% of a typical
 /// boot runs in Bare mode, so this early return is still the hottest path
 /// overall).
+///
+/// `#[inline(always)]` + the Bare check split out from the TLB-lookup/walk
+/// body below (`translate_paged`, left un-inlined -- it's a big function
+/// with a loop, and forcing it inline as well would bloat every call site
+/// for the ~2.5% of calls that ever reach it): profiling the boot-to-shell
+/// benchmark after P6-P8 showed `translate` as a real, non-inlined cost by
+/// itself (it's called from `fetch`/`read`/`write`, all of which *are*
+/// inlined into `Cpu::step` -- see cpu.rs -- so `translate` was the one
+/// remaining function-call boundary on the hottest path in the whole
+/// crate). Splitting it this way lets the Bare-mode fast path -- taken by
+/// the overwhelming majority of calls on a typical boot -- get inlined
+/// directly into its callers with no call/return overhead at all, while
+/// the rarely-taken walk still lives in one place instead of being
+/// duplicated at every inlined call site.
+#[inline(always)]
 pub fn translate(cpu: &mut Cpu, va: u64, access: Access) -> Result<u64, EmuError> {
     let satp = cpu.csrs.get(csr::SATP);
-    let mode = satp >> 60;
-    if mode == MODE_BARE {
+    if satp >> 60 == MODE_BARE {
         return Ok(va);
     }
+    translate_paged(cpu, va, access, satp)
+}
+
+fn translate_paged(cpu: &mut Cpu, va: u64, access: Access, satp: u64) -> Result<u64, EmuError> {
+    let mode = satp >> 60;
     if mode != MODE_SV39 {
         return error(format!("unsupported satp MODE {mode} (only Bare and Sv39 are implemented)"));
     }
