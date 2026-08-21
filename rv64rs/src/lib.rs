@@ -4,7 +4,9 @@
 
 pub mod asm;
 pub mod bus;
+pub mod clint;
 pub mod cpu;
+pub mod csr;
 pub mod decode;
 pub mod emulator;
 pub mod error;
@@ -12,3 +14,4 @@ pub mod execute;
 pub mod ram;
 pub mod register;
 pub mod rvc;
+pub mod trap;

@@ -8,14 +8,18 @@
 //! (no MMU translation yet -- that's stage 6, same as riscvm's cpu.py
 //! before mmu.py existed).
 //!
-//! SYSTEM/ECALL (stage 4) still deliberately returns "not implemented at
-//! this stage" rather than silently doing nothing, so the staging stays
-//! honest (mirrors how riscvm itself grew: an unimplemented opcode is a
-//! loud InternalException, not silent wrong behavior).
+//! Stage 4 (this stage) adds SYSTEM (opcode 0x73): CSRRW/CSRRS/CSRRC and
+//! their -immediate forms, ECALL, MRET, SRET, WFI (no-op), SFENCE.VMA
+//! (no-op -- real semantics arrive with the MMU in stage 6/8, matching
+//! rv64i.py's own SFENCE_VMA case, which is `pass` regardless). EBREAK is
+//! decoded but not implemented, matching riscvm's own actor(): it's in the
+//! Mnemonic table but has no case in the match, so it falls through to the
+//! same "unimplemented" error there too.
 
 use crate::cpu::Cpu;
 use crate::decode::Instruction;
 use crate::error::EmuError;
+use crate::trap;
 
 const OPCODE_LOAD: u32 = 0x03;
 const OPCODE_MISC_MEM: u32 = 0x0f;
@@ -29,6 +33,7 @@ const OPCODE_OP_32: u32 = 0x3b;
 const OPCODE_BRANCH: u32 = 0x63;
 const OPCODE_JALR: u32 = 0x67;
 const OPCODE_JAL: u32 = 0x6f;
+const OPCODE_SYSTEM: u32 = 0x73;
 
 /// Sign-extend the low `bits` bits of a value already sitting in a u64
 /// (used for LB/LH/LW, whose loaded width is narrower than the 64-bit
@@ -216,6 +221,94 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             Ok(default_next)
         }
         OPCODE_MISC_MEM => Ok(default_next), // FENCE / FENCE.I: no-op at this stage
+        OPCODE_SYSTEM => execute_system(instr, cpu, default_next),
+        _ => cpu.illegal_instruction(instr),
+    }
+}
+
+fn execute_system(instr: &Instruction, cpu: &mut Cpu, default_next: u64) -> Result<u64, EmuError> {
+    match instr.funct3 {
+        0x1 => {
+            // CSRRW: read rs1 before writing rd, in case rd == rs1 (xv6's
+            // timervec starts with `csrrw a0, mscratch, a0`).
+            let rs1_value = cpu.regs.read(instr.rs1);
+            cpu.regs.write(instr.rd, trap::csr_read(cpu, instr.csr));
+            trap::csr_write(cpu, instr.csr, rs1_value);
+            Ok(default_next)
+        }
+        0x2 => {
+            // CSRRS
+            let rs1_value = cpu.regs.read(instr.rs1);
+            let old = trap::csr_read(cpu, instr.csr);
+            cpu.regs.write(instr.rd, old);
+            trap::csr_write(cpu, instr.csr, old | rs1_value);
+            Ok(default_next)
+        }
+        0x3 => {
+            // CSRRC
+            let rs1_value = cpu.regs.read(instr.rs1);
+            let old = trap::csr_read(cpu, instr.csr);
+            cpu.regs.write(instr.rd, old);
+            trap::csr_write(cpu, instr.csr, old & !rs1_value);
+            Ok(default_next)
+        }
+        0x5 => {
+            // CSRRWI: the rs1 field holds a 5-bit zero-extended immediate, not a register
+            let imm = instr.rs1 as u64;
+            cpu.regs.write(instr.rd, trap::csr_read(cpu, instr.csr));
+            trap::csr_write(cpu, instr.csr, imm);
+            Ok(default_next)
+        }
+        0x6 => {
+            // CSRRSI
+            let imm = instr.rs1 as u64;
+            let old = trap::csr_read(cpu, instr.csr);
+            cpu.regs.write(instr.rd, old);
+            trap::csr_write(cpu, instr.csr, old | imm);
+            Ok(default_next)
+        }
+        0x7 => {
+            // CSRRCI
+            let imm = instr.rs1 as u64;
+            let old = trap::csr_read(cpu, instr.csr);
+            cpu.regs.write(instr.rd, old);
+            trap::csr_write(cpu, instr.csr, old & !imm);
+            Ok(default_next)
+        }
+        0x0 => match (instr.funct7, instr.rs2) {
+            (0b0000000, 0b00000) => {
+                // ECALL: 8=U-mode, 9=S-mode, 11=M-mode
+                let cause = 8 + cpu.mode as u64;
+                Ok(trap::raise_trap(cpu, cause, false, 0))
+            }
+            (0b0001000, 0b00010) => {
+                // SRET
+                let mut sstatus = cpu.csrs.get(&crate::csr::MSTATUS).copied().unwrap_or(0); // sstatus aliases mstatus
+                let spie = sstatus & trap::MSTATUS_SPIE != 0;
+                let spp = (sstatus & trap::MSTATUS_SPP) >> 8;
+                sstatus = (sstatus & !trap::MSTATUS_SIE) | if spie { trap::MSTATUS_SIE } else { 0 };
+                sstatus |= trap::MSTATUS_SPIE;
+                sstatus &= !trap::MSTATUS_SPP;
+                cpu.csrs.insert(crate::csr::MSTATUS, sstatus);
+                cpu.mode = spp as u8;
+                Ok(cpu.csrs.get(&crate::csr::SEPC).copied().unwrap_or(0))
+            }
+            (0b0001000, 0b00101) => Ok(default_next), // WFI: interrupts are checked every instruction anyway
+            (0b0001001, _) => Ok(default_next),        // SFENCE.VMA: no-op until the MMU exists
+            (0b0011000, _) => {
+                // MRET
+                let mut mstatus = cpu.csrs.get(&crate::csr::MSTATUS).copied().unwrap_or(0);
+                let mpie = mstatus & trap::MSTATUS_MPIE != 0;
+                let mpp = (mstatus & trap::MSTATUS_MPP) >> 11;
+                mstatus = (mstatus & !trap::MSTATUS_MIE) | if mpie { trap::MSTATUS_MIE } else { 0 };
+                mstatus |= trap::MSTATUS_MPIE;
+                mstatus &= !trap::MSTATUS_MPP;
+                cpu.csrs.insert(crate::csr::MSTATUS, mstatus);
+                cpu.mode = mpp as u8;
+                Ok(cpu.csrs.get(&crate::csr::MEPC).copied().unwrap_or(0))
+            }
+            _ => cpu.illegal_instruction(instr), // includes EBREAK -- unimplemented in riscvm too
+        },
         _ => cpu.illegal_instruction(instr),
     }
 }

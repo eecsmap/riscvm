@@ -20,6 +20,7 @@ pub struct Instruction {
     pub imm_u: i64,
     pub imm_j: i64,
     pub shamt: u32, // RV64: 6-bit shift amount (bits [25:20])
+    pub csr: u32,   // same bits as imm_i, unsigned: the 12-bit CSR address (SYSTEM opcode)
 }
 
 #[inline(always)]
@@ -55,6 +56,7 @@ impl Instruction {
             21,
         );
         let shamt = (w >> 20) & 0x3f;
+        let csr = (w >> 20) & 0xfff;
 
         Instruction {
             value: w,
@@ -70,6 +72,7 @@ impl Instruction {
             imm_u,
             imm_j,
             shamt,
+            csr,
         }
     }
 }

@@ -7,15 +7,22 @@
 //! own width) and picks full RV64I vs 16-bit RVC by the low 2 bits, exactly
 //! like cpu.py's `match data & 0b11`.
 //!
-//! Interrupt/CLINT/UART polling and MMU translation are still later-stage
-//! additions.
+//! Stage 4 adds CSR/privilege-level state (cpu.csrs, cpu.mode) and a
+//! cpu.clint slot for trap.rs's check_interrupt() -- see trap.rs and
+//! clint.rs. UART polling and MMU translation are still later-stage
+//! additions; fetch() doesn't yet call check_interrupt() itself the way
+//! cpu.py's does (that per-instruction interrupt-checking loop is a
+//! stage 5 concern, once there's a real device wired up to observe it).
 
 use crate::bus::Bus;
+use crate::clint::Clint;
+use crate::csr;
 use crate::decode::Instruction;
 use crate::error::{error, EmuError};
 use crate::execute;
 use crate::register::Registers;
 use crate::rvc::{self, CInstruction};
+use std::collections::HashMap;
 
 pub enum DecodedInstruction {
     Full(Instruction),
@@ -26,11 +33,20 @@ pub struct Cpu {
     pub regs: Registers,
     pub pc: u64,
     pub bus: Bus,
+    pub csrs: HashMap<u32, u64>,
+    pub mode: u8,
+    pub clint: Option<Clint>,
 }
 
 impl Cpu {
     pub fn new(bus: Bus) -> Self {
-        Cpu { regs: Registers::new(), pc: 0, bus }
+        // Matches cpu.py's CPU.__init__: mstatus starts with some bits set
+        // (notably MPP=11, i.e. M-mode, per the "hopefully we don't use
+        // csrs too frequently" comment there), mie has MSIE|MTIE preset.
+        let mut csrs = HashMap::new();
+        csrs.insert(csr::MSTATUS, 0x000a_0000_0000);
+        csrs.insert(csr::MIE, 0x222);
+        Cpu { regs: Registers::new(), pc: 0, bus, csrs, mode: csr::PRIV_M, clint: None }
     }
 
     /// Mirrors CPU.fetch()'s `match data & 0b11` dispatch between full
