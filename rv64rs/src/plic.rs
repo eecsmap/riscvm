@@ -12,7 +12,6 @@
 
 use crate::bus::Device;
 use crate::error::{error, EmuError};
-use std::collections::HashMap;
 
 const PRIORITY_BASE: u64 = 0x0;
 const PRIORITY_END: u64 = 0x1000;
@@ -26,12 +25,22 @@ const CLAIM_OFFSET: u64 = 0x4;
 
 const MAX_IRQ: usize = 32; // this emulator's device set only uses IRQ 1 and 10; one word is plenty
 
+// Real contexts in play here are tiny (context = hart*2 + M/S, and this
+// emulator only ever has 1 hart -- context 0 or 1), but the MMIO decode
+// above technically allows a much larger range, so this stays generous
+// rather than exactly 2. `enable`/`threshold` were HashMap<u64,u32> until
+// profiling the boot-to-shell benchmark showed check_interrupt() calling
+// Plic::claimable() on *every instruction* (same pattern P1 already fixed
+// for CSRs) made SipHash/hashbrown machinery ~9% of sampled time again,
+// even after the CSR HashMap was long gone.
+const MAX_CONTEXTS: usize = 64;
+
 pub struct Plic {
     size: u64,
     devices_by_irq: Vec<(u32, Box<dyn Fn() -> u32>)>, // irq -> closure reading interrupt_status()
     priority: [u32; MAX_IRQ],
-    enable: HashMap<u64, u32>,
-    threshold: HashMap<u64, u32>,
+    enable: [u32; MAX_CONTEXTS],
+    threshold: [u32; MAX_CONTEXTS],
 }
 
 impl Plic {
@@ -40,8 +49,33 @@ impl Plic {
             size,
             devices_by_irq: Vec::new(),
             priority: [0; MAX_IRQ],
-            enable: HashMap::new(),
-            threshold: HashMap::new(),
+            enable: [0; MAX_CONTEXTS],
+            threshold: [0; MAX_CONTEXTS],
+        }
+    }
+
+    /// Out-of-range contexts read as 0 (same default a HashMap.get().unwrap_or(0)
+    /// gave) rather than panicking -- a guest write far out in the enable/
+    /// context MMIO windows shouldn't crash the emulator even though no
+    /// real guest here ever does that.
+    #[inline(always)]
+    fn enable_get(&self, context: u64) -> u32 {
+        self.enable.get(context as usize).copied().unwrap_or(0)
+    }
+    #[inline(always)]
+    fn enable_set(&mut self, context: u64, value: u32) {
+        if let Some(slot) = self.enable.get_mut(context as usize) {
+            *slot = value;
+        }
+    }
+    #[inline(always)]
+    fn threshold_get(&self, context: u64) -> u32 {
+        self.threshold.get(context as usize).copied().unwrap_or(0)
+    }
+    #[inline(always)]
+    fn threshold_set(&mut self, context: u64, value: u32) {
+        if let Some(slot) = self.threshold.get_mut(context as usize) {
+            *slot = value;
         }
     }
 
@@ -68,8 +102,8 @@ impl Plic {
     }
 
     fn claim_irq(&self, context: u64) -> u32 {
-        let candidates = self.pending_mask() & self.enable.get(&context).copied().unwrap_or(0);
-        let threshold = self.threshold.get(&context).copied().unwrap_or(0);
+        let candidates = self.pending_mask() & self.enable_get(context);
+        let threshold = self.threshold_get(context);
         let mut best_irq = 0u32;
         let mut best_priority = threshold;
         for irq in 1..MAX_IRQ as u32 {
@@ -97,13 +131,13 @@ impl Device for Plic {
         }
         if (ENABLE_BASE..ENABLE_END).contains(&address) {
             let context = (address - ENABLE_BASE) / ENABLE_STRIDE;
-            return Ok(self.enable.get(&context).copied().unwrap_or(0) as u64);
+            return Ok(self.enable_get(context) as u64);
         }
         if address >= CONTEXT_BASE {
             let context = (address - CONTEXT_BASE) / CONTEXT_STRIDE;
             let offset = (address - CONTEXT_BASE) % CONTEXT_STRIDE;
             if offset == THRESHOLD_OFFSET {
-                return Ok(self.threshold.get(&context).copied().unwrap_or(0) as u64);
+                return Ok(self.threshold_get(context) as u64);
             }
             if offset == CLAIM_OFFSET {
                 return Ok(self.claim_irq(context) as u64); // claiming is read-triggered
@@ -126,14 +160,14 @@ impl Device for Plic {
         }
         if (ENABLE_BASE..ENABLE_END).contains(&address) {
             let context = (address - ENABLE_BASE) / ENABLE_STRIDE;
-            self.enable.insert(context, value);
+            self.enable_set(context, value);
             return Ok(());
         }
         if address >= CONTEXT_BASE {
             let context = (address - CONTEXT_BASE) / CONTEXT_STRIDE;
             let offset = (address - CONTEXT_BASE) % CONTEXT_STRIDE;
             if offset == THRESHOLD_OFFSET {
-                self.threshold.insert(context, value);
+                self.threshold_set(context, value);
             }
             // CLAIM_OFFSET write is "complete" -- no-op, see module docstring
         }
