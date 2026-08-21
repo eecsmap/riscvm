@@ -1,25 +1,25 @@
 # RISC-V(irtual) Machine
 
 ## Requirement
-- python3.10
-- pytest
+- python3.10+
+- [uv](https://docs.astral.sh/uv/) (dependency/venv management; `pip install -e .` + a manually managed venv also still works, since it's all driven by `pyproject.toml`)
 
 ## Usage
 
 Run tests.
 ```
-pytest
+uv run pytest
 ```
 
 A quick sanity check.
 ```
-python3 -m riscvm.emulator tests/fib.bin
+uv run python3 -m riscvm.emulator tests/fib.bin
 ```
 
 ### Next Step Iteration
 There is a xv6 kernel binary provided in tests. We use it to drive the development.
 To find next instruction to implement, simply run:
-`python3 -m riscvm.emulator tests/xv6-kernel.bin`
+`uv run python3 -m riscvm.emulator tests/xv6-kernel.bin`
 Make sure which ever instruction added is well tested too.
 
 ### Boot a real xv6 to an interactive shell
@@ -29,7 +29,7 @@ filesystem image (built from mit-pdos/xv6-riscv), booted at `0x80000000`.
 Run it in a real terminal (not piped) so keyboard input is wired to the
 emulated UART:
 ```
-python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs.bin
+uv run python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs.bin
 ```
 Since this is a pure-Python instruction-level interpreter, boot is slow:
 xv6's `kinit()` zero-fills all of free physical RAM byte-by-byte at boot,
@@ -40,7 +40,7 @@ For a fast local demo, use `tests/xv6-kernel-fs-small.bin` instead -- the
 identical kernel source rebuilt with `PHYSTOP` (kernel/memlayout.h)
 reduced from 128MB to 2MB, so there's far less to zero at boot:
 ```
-python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs-small.bin
+uv run python3 -m riscvm.emulator --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs-small.bin
 ```
 This reaches the `$ ` shell prompt in a few minutes instead of hours, and
 `ls`/`cat`/etc. all work against the same real `fs.img`. It's not suitable
@@ -52,8 +52,10 @@ the one to use for interactively poking at the shell.
 - Clone this project
 - `cd riscvm`
 - `bash pub.sh`
-- Install this package in editable mode (i.e. setuptools "develop mode") `pip install -e .`
-- Sanity check `echo 12345678 | python3 -m riscvm`
+- `uv sync` -- creates `.venv` and installs this package in editable mode plus dev
+  dependencies (pytest), per `pyproject.toml`. A manually managed venv + `pip install -e .`
+  still works the same way if you'd rather not use uv.
+- Sanity check `echo 12345678 | uv run python3 -m riscvm`
 
 ## (Optional) Build RISC-V tool-chain
 Read https://github.com/riscv-collab/riscv-gnu-toolchain
@@ -95,10 +97,10 @@ objcopy -O binary fib.o fib.bin
 
 ## examples of tools
 ```
-python tools/as.py
+uv run python tools/as.py
 mv a0, a1
 
-python tools/as.py --dis
+uv run python tools/as.py --dis
 852e
 ```
 
@@ -123,7 +125,7 @@ riscvm.exception.InternalException: invalid instruction: UNDEFINED
 ```
 then just run
 ```
-python tools/as.py --dis
+uv run python tools/as.py --dis
 12000073
 ['sfence.vma']
 ```

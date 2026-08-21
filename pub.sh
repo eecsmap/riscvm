@@ -1,6 +1,5 @@
-python3 -m pip install --upgrade pip
-python3 -m pip install --upgrade setuptools wheel
-python3 -m pip install --upgrade twine
+uv build
 
-python3 setup.py sdist bdist_wheel
-twine upload --skip-existing dist/*
+# Reads credentials from UV_PUBLISH_TOKEN (or UV_PUBLISH_USERNAME/UV_PUBLISH_PASSWORD),
+# same role ~/.pypirc played for twine.
+uv publish

@@ -62,10 +62,10 @@
 ## 环境准备
 
 ```sh
-# Python 侧
+# Python 侧（用 uv 管理依赖/venv，见 pyproject.toml；手动 venv + pip install -e . 也一样能跑）
 cd riscvm仓库根目录
-pip install -e .
-pytest                              # 跑全部 Python 测试
+uv sync
+uv run pytest                       # 跑全部 Python 测试
 
 # Rust 侧
 cd rv64rs
@@ -76,8 +76,8 @@ cargo test --release                # 70 个测试，全部从 Python 的 tests/
 先跑一次两边的"地基"验收，确认环境没问题：
 
 ```sh
-python3 -m riscvm.emulator tests/fib.bin      # Python 版 fib
-cd rv64rs && cargo run --release -- fib       # Rust 版 fib，应输出同一个结果
+uv run python3 -m riscvm.emulator tests/fib.bin      # Python 版 fib
+cd rv64rs && cargo run --release -- fib              # Rust 版 fib，应输出同一个结果
 ```
 
 两边应该都输出 `a0 = fib(80) = 23416728348467685`（或等价的寄存器值）——这
@@ -390,7 +390,7 @@ cargo run --release -- fib
 # a0 = fib(80) = 23416728348467685 (expected 23416728348467685, match = true)
 ```
 
-这一个数字和 Python 版 `python3 -m riscvm.emulator tests/fib.bin` 跑出来
+这一个数字和 Python 版 `uv run python3 -m riscvm.emulator tests/fib.bin` 跑出来
 的完全一致——这是整个项目"Python 实现是 Rust 实现的语义 ground truth"这
 条原则第一次被验证的地方。
 
