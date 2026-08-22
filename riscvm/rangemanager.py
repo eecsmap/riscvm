@@ -4,9 +4,6 @@ from riscvm.exception import error
 import logging
 logger = logging.getLogger(__name__)
 
-class RangeMangerException(Exception):
-    pass
-
 class RangeManger:
 
     def __init__(self):
@@ -32,11 +29,11 @@ class RangeManger:
         assert position != len(self.starts)
         if self.starts[position] == address:
             error(f'range {range} cannot fit in {self}')
-        
+
         assert self.starts[position] > address
         if address + size > self.starts[position]:
             error(f'range {range} cannot fit in {self}')
-    
+
         self.starts.insert(position, address)
         self.sizes.insert(position, size)
 
@@ -44,11 +41,11 @@ class RangeManger:
         '''
         return the range(s) holding access at given address with given size
         '''
-        range = (address, size)
+        requested = (address, size)
         if address < 0 or size <= 0:
-            error(f'invalid range {range}')
+            error(f'invalid range {requested}')
         if address + size < address:
-            error(f'overflow range {range}')
+            error(f'overflow range {requested}')
 
         # do not handle cross device access yet!
         position = bisect_right(self.starts, address) - 1
@@ -62,11 +59,7 @@ class RangeManger:
         error(f'no device mapped to cover (0x{address:x}, 0x{address+size:x})')
 
     def __str__(self):
-        s = ''    
+        s = ''
         for start, size in zip(self.starts, self.sizes):
             s += (f'[{start:x} - {start + size:x})')
         return s
-
-def test_rangemanger():
-    range_manger = RangeManger()
-    range_manger.add_range((-1, 1))

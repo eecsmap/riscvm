@@ -1,69 +1,21 @@
 import os
 import select
-from enum import Enum, auto
+from enum import Enum
 from collections import deque
 from riscvm import error, todo
 
 '''
 refer:
     https://www.scs.stanford.edu/10wi-cs140/pintos/specs/pc16550d.pdf
+
+register offsets (DLAB = Divisor Latch Access Bit; see UART.dlab):
+    DLAB=0 read:  RBR=0 IER=1 IIR=2 LCR=3 MCR=4 LSR=5 MSR=6 SCR=7
+    DLAB=0 write: THR=0 IER=1 FCR=2 LCR=3 MCR=4
+    DLAB=1:       DLL=0 DLM=1 (both directions)
 '''
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-class RegisterEnum(Enum):
-    # DLAB = 0 READ
-    RBR = 0 # receiver buffer
-    IER = 1 # 
-    IIR = 2 # interrupt identification
-    LCR = 3 # 
-    MCR = 4 # modem control
-    LSR = 5 # line status
-    MSR = 6 # modem status
-    SCR = 7 # scratch
-
-    # DLAB = 0 WRITE
-    THR = 0 # transmitter holding
-    FCR = 2 # 
-
-    # DLAB = 1 READ
-    DLL = 0 # divisor latch LSB
-    DLM = 1 # divisor latch MSB
-
-    
-# The machine level has the highest privileges
-# and is the only mandatory privilege level for a RISC-V hardware platform.
-
-class CSR(Enum):
-    MEPC = 0x341
-    MSTATUS = 0x300
-    MIE = 0x304
-
-    def __str__(self):
-        return f'{self.name}'
-
-# registers
-#define RHR 0                 // receive holding register (for input bytes)
-#define THR 0                 // transmit holding register (for output bytes)
-
-# DLAB = 1 to write divisor latches of Baud Generator
-#DLL = 0                 # divisor latch least significant
-#DLM = 1                 # divisor latch most significant
-
-#IER = 1                 # interrupt enable register
-
-#FCR = 2                 # FIFO control register
-
-#define ISR 2                 // interrupt status register
-#LCR = 3                 # line control register
-#
-#
-#define LSR 5                 // line status register
-#define LSR_RX_READY (1<<0)   // input is waiting to be read from RHR
-#define LSR_TX_IDLE (1<<5)    // THR can accept another character to send
-#LSR = 5 # Line Status Register
 
 
 class Register:
@@ -155,8 +107,10 @@ class FCR(Register):
 
     @value.setter
     def value(self, value):
-        self._uart.filo_enabled = bool(value | self.FCR_FIFO_ENABLE)
-        self._uart.filo_reset = bool(value | self.FCR_FIFO_CLEAR)
+        # bitwise AND to test the bit, not OR (which is truthy for almost any
+        # value regardless of whether the bit is actually set)
+        self._uart.fifo_enabled = bool(value & self.FCR_FIFO_ENABLE)
+        self._uart.fifo_reset = bool(value & self.FCR_FIFO_CLEAR)
         assert not value & ~(self.FCR_FIFO_ENABLE | self.FCR_FIFO_CLEAR), "TODO: more flags to handle"
 
 
@@ -204,10 +158,7 @@ class DLM(Register):
 class UART:
 
     def __init__(self, size, uart_output_file, uart_input_file=None):
-        # handle hold the lifetime of mmap object
         self.size = size
-        #self.handle = gen('mem.dat', size)
-        #self.data = next(self.handle)
         self._registers = dict(
             rbr = RBR(self, 0, 'rbr'),
             ier = IER(self, 1, 'ier'),
@@ -230,13 +181,8 @@ class UART:
         self.dlm_value = 0
         self.rx_queue = deque()
 
-        self.filo_enabled = False
-        #self.data[LSR] = 1
-        #self.lsr.value = 1
-        self.allow_send = True
-        #self.dll = 0
-        #self.dlm = 0
-        # lets default to 8bit no parity
+        self.fifo_enabled = False
+        self.fifo_reset = False
         self.output = uart_output_file
         # optional live input source (e.g. sys.stdin.buffer for an
         # interactive session); polled non-blockingly once per instruction
@@ -322,32 +268,14 @@ class UART:
     def dlm(self):
         return self._registers['dlm'].value
 
-    # @rbr.setter
-    # def rbr(self):
-    #     return self._registers['rbr']
     @ier.setter
     def ier(self, value):
         assert not self.dlab, 'not accessible in current dlab mode'
         self._registers['ier'].value = value
-    # @property
-    # def iir(self):
-    #     return self._registers['iir']
     @lcr.setter
     def lcr(self, value):
         self._registers['lcr'].value = value
-    # @property
-    # def mcr(self):
-    #     return self._registers['mcr']
-    # @property
-    # def lsr(self):
-    #     return self._registers['lsr']
-    # @property
-    # def msr(self):
-    #     return self._registers['msr']
-    # @property
-    # def scr(self):
-    #     return self._registers['scr']
-    # # DLAB = 0 write
+    # rbr/iir/mcr/lsr/msr/scr have no setter: they're read-only from the guest
     @thr.setter
     def thr(self, value):
         assert not self.dlab, 'not accessible in current dlab mode'
@@ -390,37 +318,18 @@ class UART:
                 # The difference is, that bit 5 turns high as soon as
                 # the transmitter holding register is empty whereas
                 # bit 6 indicates that also the shift register which outputs the bits on the line is empty.
-                if self.allow_send: pass
                 value = self.lsr
             case 6:
                 value = self.msr
             case 7:
                 value = self.scr
 
-        regname = [
-            [
-                'rbr', 'ier', 'iir', 'lcr', 'mcr', 'lsr', 'msr', 'scr'
-            ],
-            [
-                'dll', 'dlm', 'iir', 'lcr', 'mcr', 'lsr', 'msr', 'scr'
-            ]
-        ]
-        #logger.info(f'*** uart read from\t{regname[self.dlab][address]}({address}): 0x{value:02X} \'{value:c}\'')
         return value
 
     def write(self, address, size, value):
         assert size == 1, f'invalid address size {address}'
         value &= 0xff
-        regname = [
-            [
-                'thr', 'ier', 'fcr', 'lcr', 'mcr', 'factory_test', 'not_used', 'scr'
-            ],
-            [
-                'dll', 'dlm', 'fcr', 'lcr', 'mcr', 'factory_test', 'not_used', 'scr'
-            ]
-        ]
         assert address not in {5, 6}, 'uart register illegal write'
-        #logger.debug(f'*** uart write to\t{regname[self.dlab][address]}({address}): 0x{value:02x}')
 
         match address:
             case 0:
@@ -428,7 +337,6 @@ class UART:
                     self.dll = value
                 else:
                     # THR
-                    #logger.info(f'*** uart write to\t{regname[self.dlab][address]}({address}): 0x{value:02x} \'{value:c}\'')
                     if self.output:
                         self.output.write(chr(value).encode())
                         # flush every byte: this is a live console, not a
