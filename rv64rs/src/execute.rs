@@ -18,6 +18,7 @@
 //! (see mmu.rs for why one exists at all: profiling justified it after
 //! P1-P3 removed the cheaper wins).
 
+use crate::bus::Bus;
 use crate::cpu::Cpu;
 use crate::decode::Instruction;
 use crate::error::EmuError;
@@ -50,7 +51,7 @@ fn sext64(value: u64, bits: u32) -> u64 {
 /// Executes one decoded instruction against `cpu`, returning the next pc
 /// (the caller, Cpu::execute, commits it). Errors on anything outside this
 /// stage's scope.
-pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
+pub fn execute(instr: &Instruction, cpu: &mut Cpu, bus: &mut Bus) -> Result<u64, EmuError> {
     let pc = cpu.pc;
     let default_next = pc.wrapping_add(4);
 
@@ -58,13 +59,13 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
         OPCODE_LOAD => {
             let addr = cpu.regs.read(instr.rs1).wrapping_add(instr.imm_i as u64);
             let out = match instr.funct3 {
-                0x0 => sext64(cpu.read(addr, 1)?, 8),   // LB
-                0x1 => sext64(cpu.read(addr, 2)?, 16),  // LH
-                0x2 => sext64(cpu.read(addr, 4)?, 32),  // LW
-                0x3 => cpu.read(addr, 8)?,               // LD
-                0x4 => cpu.read(addr, 1)?,                // LBU
-                0x5 => cpu.read(addr, 2)?,                // LHU
-                0x6 => cpu.read(addr, 4)?,                // LWU
+                0x0 => sext64(cpu.read(addr, 1, bus)?, 8),   // LB
+                0x1 => sext64(cpu.read(addr, 2, bus)?, 16),  // LH
+                0x2 => sext64(cpu.read(addr, 4, bus)?, 32),  // LW
+                0x3 => cpu.read(addr, 8, bus)?,               // LD
+                0x4 => cpu.read(addr, 1, bus)?,                // LBU
+                0x5 => cpu.read(addr, 2, bus)?,                // LHU
+                0x6 => cpu.read(addr, 4, bus)?,                // LWU
                 _ => return cpu.illegal_instruction(instr),
             };
             cpu.regs.write(instr.rd, out);
@@ -74,10 +75,10 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             let addr = cpu.regs.read(instr.rs1).wrapping_add(instr.imm_s as u64);
             let value = cpu.regs.read(instr.rs2);
             match instr.funct3 {
-                0x0 => cpu.write(addr, 1, value)?, // SB
-                0x1 => cpu.write(addr, 2, value)?, // SH
-                0x2 => cpu.write(addr, 4, value)?, // SW
-                0x3 => cpu.write(addr, 8, value)?, // SD
+                0x0 => cpu.write(addr, 1, value, bus)?, // SB
+                0x1 => cpu.write(addr, 2, value, bus)?, // SH
+                0x2 => cpu.write(addr, 4, value, bus)?, // SW
+                0x3 => cpu.write(addr, 8, value, bus)?, // SD
                 _ => return cpu.illegal_instruction(instr),
             };
             Ok(default_next)
@@ -235,8 +236,8 @@ pub fn execute(instr: &Instruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             let funct5 = instr.funct7 >> 2;
             if instr.funct3 == 0x2 && funct5 == 0b00001 {
                 let addr = cpu.regs.read(instr.rs1);
-                let old = sext64(cpu.read(addr, 4)?, 32);
-                cpu.write(addr, 4, cpu.regs.read(instr.rs2))?;
+                let old = sext64(cpu.read(addr, 4, bus)?, 32);
+                cpu.write(addr, 4, cpu.regs.read(instr.rs2), bus)?;
                 cpu.regs.write(instr.rd, old);
                 Ok(default_next)
             } else {

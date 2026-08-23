@@ -27,12 +27,22 @@ pub fn encode_j(imm: i32, rd: u32, opcode: u32) -> u32 {
     (bit20 << 31) | (bits10_1 << 21) | (bit11 << 20) | (bits19_12 << 12) | (rd << 7) | opcode
 }
 
+pub fn encode_b(imm: i32, rs1: u32, rs2: u32, funct3: u32, opcode: u32) -> u32 {
+    let imm = imm as u32;
+    let bit12 = (imm >> 12) & 1;
+    let bits10_5 = (imm >> 5) & 0x3f;
+    let bits4_1 = (imm >> 1) & 0xf;
+    let bit11 = (imm >> 11) & 1;
+    (bit12 << 31) | (bits10_5 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (bits4_1 << 8) | (bit11 << 7) | opcode
+}
+
 // Standard RISC-V ABI register numbers used by demo programs.
 pub const ZERO: u32 = 0;
 pub const RA: u32 = 1;
 pub const SP: u32 = 2;
 pub const T0: u32 = 5;
 pub const T1: u32 = 6;
+pub const T2: u32 = 7;
 pub const A0: u32 = 10;
 
 pub const OPCODE_LOAD: u32 = 0x03;
@@ -40,10 +50,13 @@ pub const OPCODE_STORE: u32 = 0x23;
 pub const OPCODE_OP_IMM: u32 = 0x13;
 pub const OPCODE_LUI: u32 = 0x37;
 pub const OPCODE_JALR: u32 = 0x67;
+pub const OPCODE_JAL: u32 = 0x6f;
+pub const OPCODE_BRANCH: u32 = 0x63;
 
 pub const FUNCT3_SW: u32 = 0x2;
 pub const FUNCT3_LW: u32 = 0x2;
 pub const FUNCT3_ADDI: u32 = 0x0;
+pub const FUNCT3_BEQ: u32 = 0x0;
 
 /// Stage 2 milestone program: use the stack region for real -- write 42,
 /// read it back, increment, write again, read the final value into a0.

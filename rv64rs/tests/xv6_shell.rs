@@ -34,7 +34,7 @@ fn boots_to_an_interactive_shell_prompt() {
     let mut count: u64 = 0;
     const LIMIT: u64 = 40_000_000;
     loop {
-        if emu.cpu.step().is_err() {
+        if emu.cpus[0].step(&mut emu.bus).is_err() {
             break;
         }
         count += 1;

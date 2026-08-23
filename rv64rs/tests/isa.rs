@@ -17,13 +17,13 @@ use rv64rs::cpu::Cpu;
 use rv64rs::decode::Instruction;
 use rv64rs::ram::Ram;
 
-fn cpu() -> Cpu {
-    Cpu::new(Bus::new())
+fn cpu() -> (Cpu, Bus) {
+    (Cpu::new(0), Bus::new())
 }
 
 /// Mirrors test_isa.py's data_loaded(hexdata): a CPU with a RAM device
 /// mapped at address 0 holding `data`.
-fn cpu_with_ram(hex_data: &str) -> Cpu {
+fn cpu_with_ram(hex_data: &str) -> (Cpu, Bus) {
     let bytes: Vec<u8> = (0..hex_data.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex_data[i..i + 2], 16).unwrap())
@@ -31,14 +31,14 @@ fn cpu_with_ram(hex_data: &str) -> Cpu {
     let ram = Ram::with_content(bytes.len() as u64, &bytes);
     let mut bus = Bus::new();
     bus.set_ram(ram, 0).unwrap();
-    Cpu::new(bus)
+    (Cpu::new(0), bus)
 }
 
 // --- td_I: addi x1, x0, 42 ---
 #[test]
 fn addi() {
-    let mut c = cpu();
-    c.execute(&Instruction::new(0x02a00093)).unwrap();
+    let (mut c, mut bus) = cpu();
+    c.execute(&Instruction::new(0x02a00093), &mut bus).unwrap();
     assert_eq!(c.regs.read(1), 42);
 }
 
@@ -47,10 +47,10 @@ fn addi() {
 fn not_via_xori() {
     // not x1,x2 (XORI x1,x2,-1); tuple sets x1=0 (irrelevant, it's rd) and
     // x2=0xffff_ffff_ffff_ff00 (the real rs1)
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.regs.write(1, 0);
     c.regs.write(2, 0xffff_ffff_ffff_ff00);
-    c.execute(&Instruction::new(0xfff14093)).unwrap();
+    c.execute(&Instruction::new(0xfff14093), &mut bus).unwrap();
     assert_eq!(c.regs.read(1), 0xff);
 }
 
@@ -62,10 +62,10 @@ fn slt_signed_comparisons() {
         (0xffff_ffff_ffff_ffff, 1, 0x00b52533, 1),                // -1 < 1 (signed) -> 1
     ];
     for (rs1v, rs2v, word, expected) in cases {
-        let mut c = cpu();
+        let (mut c, mut bus) = cpu();
         c.regs.write(10, rs1v);
         c.regs.write(11, rs2v);
-        c.execute(&Instruction::new(word)).unwrap();
+        c.execute(&Instruction::new(word), &mut bus).unwrap();
         assert_eq!(c.regs.read(10), expected, "word=0x{word:x}");
     }
 }
@@ -77,41 +77,41 @@ fn sltu_unsigned_comparisons() {
         (2, 3, 0x00b53533, 1),
     ];
     for (rs1v, rs2v, word, expected) in cases {
-        let mut c = cpu();
+        let (mut c, mut bus) = cpu();
         c.regs.write(10, rs1v);
         c.regs.write(11, rs2v);
-        c.execute(&Instruction::new(word)).unwrap();
+        c.execute(&Instruction::new(word), &mut bus).unwrap();
         assert_eq!(c.regs.read(10), expected, "word=0x{word:x}");
     }
 }
 
 #[test]
 fn xor_register() {
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.regs.write(10, 0b1010);
     c.regs.write(11, 0b0110);
-    c.execute(&Instruction::new(0x00b54533)).unwrap();
+    c.execute(&Instruction::new(0x00b54533), &mut bus).unwrap();
     assert_eq!(c.regs.read(10), 0b1100);
 }
 
 #[test]
 fn addw_subw() {
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.regs.write(10, 2);
     c.regs.write(11, 3);
-    c.execute(&Instruction::new(0x00b5053b)).unwrap(); // addw a0,a0,a1
+    c.execute(&Instruction::new(0x00b5053b), &mut bus).unwrap(); // addw a0,a0,a1
     assert_eq!(c.regs.read(10), 5);
 
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.regs.write(10, 5);
     c.regs.write(11, 3);
-    c.execute(&Instruction::new(0x40b5053b)).unwrap(); // subw a0,a0,a1
+    c.execute(&Instruction::new(0x40b5053b), &mut bus).unwrap(); // subw a0,a0,a1
     assert_eq!(c.regs.read(10), 2);
 
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.regs.write(10, 0xffff_ffff_0000_0001);
     c.regs.write(11, 0xffff_ffff_ffff_ffff);
-    c.execute(&Instruction::new(0x00b5053b)).unwrap(); // addw wraps to 32 bits: 1 + -1 -> 0
+    c.execute(&Instruction::new(0x00b5053b), &mut bus).unwrap(); // addw wraps to 32 bits: 1 + -1 -> 0
     assert_eq!(c.regs.read(10), 0);
 }
 
@@ -126,9 +126,9 @@ fn shift_immediates() {
         (0xffff_ffff_8000_0000, 0x4040d09b, 0xffff_ffff_f800_0000),  // sraiw x1,x1,4
     ];
     for (rs1v, word, expected) in cases {
-        let mut c = cpu();
+        let (mut c, mut bus) = cpu();
         c.regs.write(1, rs1v);
-        c.execute(&Instruction::new(word)).unwrap();
+        c.execute(&Instruction::new(word), &mut bus).unwrap();
         assert_eq!(c.regs.read(1), expected, "word=0x{word:x}");
     }
 }
@@ -136,36 +136,36 @@ fn shift_immediates() {
 // --- td_B ---
 #[test]
 fn branch_blt() {
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.regs.write(11, 0xffff_ffff_ffff_ffff);
     c.regs.write(12, 1);
     c.pc = 0x1000;
-    c.execute(&Instruction::new(0x02c5c063)).unwrap(); // blt a1,a2,+32; -1<1 -> taken
+    c.execute(&Instruction::new(0x02c5c063), &mut bus).unwrap(); // blt a1,a2,+32; -1<1 -> taken
     assert_eq!(c.pc, 0x1020);
 
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.regs.write(11, 5);
     c.regs.write(12, 3);
     c.pc = 0x1000;
-    c.execute(&Instruction::new(0x02c5c063)).unwrap(); // 5<3 -> not taken
+    c.execute(&Instruction::new(0x02c5c063), &mut bus).unwrap(); // 5<3 -> not taken
     assert_eq!(c.pc, 0x1004);
 }
 
 // --- td_J ---
 #[test]
 fn jal() {
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.pc = 0x1000;
-    c.execute(&Instruction::new(0x08c000ef)).unwrap(); // jal ra, 0x8c
+    c.execute(&Instruction::new(0x08c000ef), &mut bus).unwrap(); // jal ra, 0x8c
     assert_eq!(c.regs.read(1), 0x1004);
     assert_eq!(c.pc, 0x108c);
 }
 
 #[test]
 fn fence_i_is_a_noop() {
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.pc = 0x1000;
-    c.execute(&Instruction::new(0x0000100f)).unwrap();
+    c.execute(&Instruction::new(0x0000100f), &mut bus).unwrap();
     assert_eq!(c.pc, 0x1004);
 }
 
@@ -179,8 +179,8 @@ fn loads() {
         ("42ff", 0x00005083, 0xff42),                 // lhu x1, 0(x0)
     ];
     for (data, word, expected) in cases {
-        let mut c = cpu_with_ram(data);
-        c.execute(&Instruction::new(word)).unwrap();
+        let (mut c, mut bus) = cpu_with_ram(data);
+        c.execute(&Instruction::new(word), &mut bus).unwrap();
         assert_eq!(c.regs.read(1), expected, "word=0x{word:x}");
     }
 }
@@ -209,18 +209,18 @@ fn rv64m_extension() {
         (7, 2, 0x02b5653b, 1),                                                           // remw
     ];
     for (rs1v, rs2v, word, expected) in cases.iter() {
-        let mut c = cpu();
+        let (mut c, mut bus) = cpu();
         c.regs.write(10, *rs1v);
         c.regs.write(11, *rs2v);
-        c.execute(&Instruction::new(*word)).unwrap();
+        c.execute(&Instruction::new(*word), &mut bus).unwrap();
         assert_eq!(c.regs.read(10), *expected, "word=0x{word:x}");
     }
 
     // remu a4,a1,a2 -- the exact instruction that first exposed this gap in riscvm
-    let mut c = cpu();
+    let (mut c, mut bus) = cpu();
     c.regs.write(11, 7);
     c.regs.write(12, 2);
-    c.execute(&Instruction::new(0x02c5f733)).unwrap();
+    c.execute(&Instruction::new(0x02c5f733), &mut bus).unwrap();
     assert_eq!(c.regs.read(14), 1);
 }
 
@@ -230,9 +230,9 @@ fn sh_stores_halfword() {
     let ram = Ram::new(0x100);
     let mut bus = Bus::new();
     bus.set_ram(ram, 0).unwrap();
-    let mut c = Cpu::new(bus);
+    let mut c = Cpu::new(0);
     c.regs.write(10, 0x20);   // a0: base address
     c.regs.write(11, 0xbeef); // a1: value to store
-    c.execute(&Instruction::new(0xb51223)).unwrap(); // sh a1, 4(a0)
-    assert_eq!(c.bus.read(0x24, 2).unwrap(), 0xbeef);
+    c.execute(&Instruction::new(0xb51223), &mut bus).unwrap(); // sh a1, 4(a0)
+    assert_eq!(bus.read(0x24, 2).unwrap(), 0xbeef);
 }

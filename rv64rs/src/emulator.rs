@@ -24,7 +24,8 @@ use std::rc::Rc;
 const STACK_SIZE: u64 = 0x0800_0000; // 128MB, same constant as emulator.py
 
 pub struct Emulator {
-    pub cpu: Cpu,
+    pub bus: Bus,
+    pub cpus: Vec<Cpu>,
 }
 
 impl Emulator {
@@ -38,9 +39,15 @@ impl Emulator {
         bus.set_ram(ram, address)?;
         bus.set_stack(stack, stack_begin)?;
 
-        let mut cpu = Cpu::new(bus);
+        let mut cpu = Cpu::new(0);
         cpu.pc = address;
-        Ok(Emulator { cpu })
+        Ok(Emulator { bus, cpus: vec![cpu] })
+    }
+
+    /// Back-compat accessor: hart 0, the only hart a plain (non-SMP)
+    /// Emulator ever has.
+    pub fn cpu(&mut self) -> &mut Cpu {
+        &mut self.cpus[0]
     }
 
     /// Runs fetch/execute until an error (unmapped fetch, unimplemented
@@ -48,7 +55,7 @@ impl Emulator {
     /// except we return the error instead of printing+reraising.
     pub fn run(&mut self) -> EmuError {
         loop {
-            if let Err(e) = self.cpu.step() {
+            if let Err(e) = self.cpus[0].step(&mut self.bus) {
                 return e;
             }
         }
@@ -71,7 +78,8 @@ const BOOTLOADER_ADDR: u64 = 0x1000;
 const BOOTLOADER_HEX: &str = "9702000013868202732540f183b5020283b282016780020000000080000000000000008700000000";
 
 pub struct Xv6Emulator {
-    pub cpu: Cpu,
+    pub bus: Bus,
+    pub cpus: Vec<Cpu>,
 }
 
 impl Xv6Emulator {
@@ -81,6 +89,27 @@ impl Xv6Emulator {
         uart_output: Option<Box<dyn Write>>,
         uart_input: Option<Box<dyn Read>>,
         disk_image: Option<Vec<u8>>,
+    ) -> Result<Self, EmuError> {
+        Self::new_smp(program, address, uart_output, uart_input, disk_image, 1)
+    }
+
+    /// SMP variant of `new`: boots `ncpu` harts, like qemu's own `-smp N`
+    /// (xv6-riscv's `make qemu` defaults to 3). Every hart is a separate
+    /// `Cpu` (own registers/CSRs/mhartid) sharing this single `Bus` --
+    /// real hardware's harts all share physical memory and MMIO the same
+    /// way. CLINT gets one mtimecmp slot per hart (see clint.rs); PLIC
+    /// already keys enable/threshold/claim off an arbitrary context number
+    /// (see plic.rs), so it needs no changes at all -- xv6's
+    /// plicinithart() naturally uses context `2*hart+1` for every hart.
+    /// Every hart resets at the same bootloader vector, matching real
+    /// qemu -- see the module-level BOOTLOADER_HEX comment.
+    pub fn new_smp(
+        program: &[u8],
+        address: u64,
+        uart_output: Option<Box<dyn Write>>,
+        uart_input: Option<Box<dyn Read>>,
+        disk_image: Option<Vec<u8>>,
+        ncpu: u64,
     ) -> Result<Self, EmuError> {
         // pad up to the next page boundary: a raw `objcopy -O binary` image
         // doesn't always include .bss, so the kernel can genuinely read/
@@ -94,7 +123,7 @@ impl Xv6Emulator {
         bus.set_ram(ram, address)?;
         bus.set_stack(stack, stack_begin)?;
 
-        let clint = Rc::new(RefCell::new(Clint::new(CLINT_SIZE)));
+        let clint = Rc::new(RefCell::new(Clint::new(CLINT_SIZE, ncpu as usize)));
         bus.set_clint(clint.clone(), CLINT_BASE)?;
 
         let uart = Rc::new(RefCell::new(Uart::new(UART_SIZE, uart_output, uart_input)));
@@ -119,19 +148,39 @@ impl Xv6Emulator {
         let bootloader = Ram::with_content(bootloader_bytes.len() as u64, &bootloader_bytes);
         bus.set_bootloader(bootloader, BOOTLOADER_ADDR)?;
 
-        let mut cpu = Cpu::new(bus);
-        cpu.clint = Some(clint);
-        cpu.uart = Some(uart);
-        cpu.plic = Some(plic);
-        cpu.pc = BOOTLOADER_ADDR;
+        let cpus = (0..ncpu)
+            .map(|hartid| {
+                let mut cpu = Cpu::new(hartid);
+                cpu.clint = Some(clint.clone());
+                cpu.uart = Some(uart.clone());
+                cpu.plic = Some(plic.clone());
+                cpu.pc = BOOTLOADER_ADDR;
+                cpu
+            })
+            .collect();
 
-        Ok(Xv6Emulator { cpu })
+        Ok(Xv6Emulator { bus, cpus })
     }
 
+    /// Back-compat accessor: hart 0. Existing single-hart call sites
+    /// (`emu.cpu.step()`, `dump_registers(&emu.cpu)`, ...) become
+    /// `emu.cpu().step(&mut emu.bus)` etc.
+    pub fn cpu(&mut self) -> &mut Cpu {
+        &mut self.cpus[0]
+    }
+
+    /// Steps every hart round-robin, one instruction per hart per round:
+    /// harts have no real wall-clock parallelism here, but round-robin
+    /// keeps every hart making roughly equal progress -- important for
+    /// xv6's secondary-hart boot spin (`while(started == 0)` in
+    /// kernel/main.c), which would never see hart 0's write if hart 0 ran
+    /// to completion before hart 1 ever got a turn.
     pub fn run(&mut self) -> EmuError {
         loop {
-            if let Err(e) = self.cpu.step() {
-                return e;
+            for cpu in &mut self.cpus {
+                if let Err(e) = cpu.step(&mut self.bus) {
+                    return e;
+                }
             }
         }
     }

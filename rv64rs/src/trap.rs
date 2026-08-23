@@ -129,10 +129,14 @@ pub fn raise_trap(cpu: &mut Cpu, cause: u64, is_interrupt: bool, tval: u64) -> u
 pub fn check_interrupt(cpu: &mut Cpu) -> bool {
     let mut mip = cpu.csrs.get(csr::MIP);
     if let Some(clint) = &cpu.clint {
-        mip = if clint.borrow().pending() { mip | MIP_MTIP } else { mip & !MIP_MTIP };
+        mip = if clint.borrow().pending(cpu.hartid as usize) { mip | MIP_MTIP } else { mip & !MIP_MTIP };
     }
     if let Some(plic) = &cpu.plic {
-        mip = if plic.borrow().claimable(1) { mip | MIP_SEIP } else { mip & !MIP_SEIP };
+        // xv6's plicinithart() only ever enables each hart's S-mode context
+        // (PLIC_SCONTEXT(hart) == 2*hart+1); M-mode contexts go unused since
+        // mideleg hands external interrupts to S-mode.
+        let context = 2 * cpu.hartid + 1;
+        mip = if plic.borrow().claimable(context) { mip | MIP_SEIP } else { mip & !MIP_SEIP };
     }
     cpu.csrs.insert(csr::MIP, mip);
 
