@@ -21,7 +21,7 @@ class CPU:
     RV64C_SIZE = 2
 
     def __init__(self, bus, hartid=0):
-        self.instrustion = None
+        self.instruction = None
         self.registers = [Register(0, f'x{i}') for i in range(32)]
         self.registers[0] = FixedRegister(0, 'x0')
         self.pc = Register()

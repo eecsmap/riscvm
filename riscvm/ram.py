@@ -1,4 +1,4 @@
-from riscvm import error, gen
+from riscvm import error
 
 import logging
 logger = logging.getLogger(__name__)
@@ -6,10 +6,7 @@ logger = logging.getLogger(__name__)
 class RAM:
 
     def __init__(self, size=0):
-        # handle hold the lifetime of mmap object
         self.size = size
-        #self.handle = gen('mem.dat', size)
-        #self.data = next(self.handle)
         self.data = bytearray(size)
 
     def __len__(self):
