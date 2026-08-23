@@ -56,6 +56,7 @@ class CSR(Enum):
     MCAUSE = 0x342
     MTVAL = 0x343
     MIP = 0x344
+    MHARTID = 0xf14
 
     def __str__(self):
         return f'{self.name}'

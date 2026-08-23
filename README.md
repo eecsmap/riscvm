@@ -47,6 +47,29 @@ This reaches the `$ ` shell prompt in a few minutes instead of hours, and
 for memory-heavy programs like `usertests` (2MB is a tight fit), but it's
 the one to use for interactively poking at the shell.
 
+### Multicore (`--smp`)
+
+`--smp N` boots N harts, like qemu's own `-smp` flag (xv6-riscv's `make
+qemu` uses `-smp 3` by default). Every hart resets at the same vector and
+is stepped round-robin, one instruction per hart per round, so the
+`kernel/main.c` hart-0-inits-then-wakes-the-rest handshake xv6 does at
+boot works the same way it does on real hardware:
+```
+uv run python3 -m riscvm.emulator --smp 3 --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs-small.bin
+```
+This reaches the shell with the same banner real qemu prints for a
+multicore boot:
+```
+hart 1 starting
+hart 2 starting
+init: starting sh
+$
+```
+Round-robin means N harts divide the interpreter's total instruction
+throughput between them, so boot takes roughly N times as long as the
+single-core case above -- most of that extra time is hart 1/2 idling in
+xv6's scheduler() loop, not real work.
+
 ## Develop
 
 - Clone this project

@@ -228,6 +228,40 @@ def test_plic_claim_respects_priority_enable_and_threshold():
     dev.interrupt_status = 0  # device acked -> line drops
     assert not plic.claimable(1)
 
+def test_check_interrupt_indexes_clint_and_plic_by_hartid():
+    # a real SMP boot has three CPU objects sharing one CLINT/PLIC (see
+    # emulator.py XV6.__init__); check_interrupt must consult *this* hart's
+    # mtimecmp slot and *this* hart's S-mode PLIC context (2*hartid+1), not
+    # always hart 0's, or hart 1/2 would either miss their own timer/never
+    # see their own device interrupts, or spuriously fire on hart 0's.
+    clint = CLINT(0x10000, nhart=3)
+    clint.mtimecmp[1] = 5
+    plic = PLIC(0x400000)
+
+    hart0 = make_cpu()
+    hart0.hartid = 0
+    hart0.clint = clint
+    hart0.mode = PrivilegeLevel.S.value
+    csr_write(hart0, CSR.MIE.value, 1 << 7)  # MTIE
+    hart0.csrs[CSR.MTVEC.value] = 0x5000
+    hart0.pc.value = 0x1000
+
+    hart1 = make_cpu()
+    hart1.hartid = 1
+    hart1.clint = clint
+    hart1.mode = PrivilegeLevel.S.value
+    csr_write(hart1, CSR.MIE.value, 1 << 7)  # MTIE
+    hart1.csrs[CSR.MTVEC.value] = 0x5000
+    hart1.pc.value = 0x1000
+
+    for _ in range(5):
+        clint.tick()
+
+    assert not check_interrupt(hart0)  # hart0's mtimecmp[0] is still "never"
+    assert hart0.pc.value == 0x1000
+    assert check_interrupt(hart1)      # hart1's mtimecmp[1] == 5 has passed
+    assert hart1.pc.value == 0x5000
+
 def test_plic_threshold_masks_low_priority():
     class FakeDevice:
         interrupt_status = 1
