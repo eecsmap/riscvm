@@ -55,6 +55,13 @@ def csr_read(cpu, addr):
     return cpu.csrs.get(addr, 0)
 
 def csr_write(cpu, addr, value):
+    if addr == CSR.MHARTID.value:
+        # read-only on real hardware; a no-op here still lets the
+        # `csrrs a1, mhartid, zero` idiom xv6 actually uses (a pure read:
+        # rs1=x0 means the "write" is old|0, a no-op regardless) work,
+        # while rejecting any write that would otherwise let cpu.csrs and
+        # cpu.hartid (what CLINT/PLIC routing actually keys off) disagree.
+        return
     alias = _ALIASED.get(addr)
     if alias:
         base_addr, mask = alias

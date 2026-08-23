@@ -65,6 +65,14 @@ pub fn csr_read(cpu: &Cpu, addr: u32) -> u64 {
 }
 
 pub fn csr_write(cpu: &mut Cpu, addr: u32, value: u64) {
+    if addr == csr::MHARTID {
+        // read-only on real hardware; a no-op here still lets the
+        // `csrrs a1, mhartid, zero` idiom xv6 actually uses (a pure read:
+        // rs1=x0 means the "write" is old|0, a no-op regardless) work,
+        // while rejecting any write that would otherwise let cpu.csrs and
+        // cpu.hartid (what CLINT/PLIC routing actually keys off) disagree.
+        return;
+    }
     if let Some((base_addr, mask)) = aliased_target(addr) {
         let base = cpu.csrs.get(base_addr);
         cpu.csrs.insert(base_addr, (base & !mask) | (value & mask));

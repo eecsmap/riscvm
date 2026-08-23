@@ -29,6 +29,24 @@ fn xv6_default_ncpu_is_a_single_hart() {
 }
 
 #[test]
+fn xv6_smp_rejects_ncpu_zero() {
+    // ncpu=0 used to silently build an empty cpus Vec: run() would then
+    // spin forever over nothing, and cpu() would panic on out-of-bounds
+    // indexing -- both far worse than a clear construction error.
+    assert!(Xv6Emulator::new_smp(&[0u8; 64], 0x8000_0000, None, None, None, 0).is_err());
+}
+
+#[test]
+fn xv6_smp_rejects_ncpu_beyond_plic_context_capacity() {
+    // xv6's plicinithart() uses S-mode context 2*hart+1; Plic::MAX_CONTEXTS
+    // (64) supports hartid 0..31, i.e. ncpu up to 32 -- one more hart than
+    // that would silently lose external interrupts (see plic.rs) rather
+    // than error, so this boundary is exactly what new_smp must reject.
+    assert!(Xv6Emulator::new_smp(&[0u8; 64], 0x8000_0000, None, None, None, 32).is_ok());
+    assert!(Xv6Emulator::new_smp(&[0u8; 64], 0x8000_0000, None, None, None, 33).is_err());
+}
+
+#[test]
 fn run_round_robins_harts_so_a_spin_wait_actually_unblocks() {
     // This is the same shape as xv6's real boot handshake: hart 0 does some
     // work then sets a shared flag (kernel/main.c's `started`), and hart 1

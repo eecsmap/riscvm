@@ -81,6 +81,12 @@ def test_xv6_default_ncpu_is_a_single_hart():
     assert len(xv6.cpus) == 1
     assert xv6.cpu.clint.nhart == 1
 
+def test_xv6_rejects_ncpu_zero():
+    # ncpu=0 used to silently build an empty cpus list, so self.cpu =
+    # self.cpus[0] raised an opaque IndexError instead of a clear error.
+    with raises(AssertionError):
+        XV6(bytes(64), address=0x80000000, ncpu=0)
+
 def test_run_round_robins_harts_so_a_spin_wait_actually_unblocks():
     # this is the same shape as xv6's real boot handshake: hart 0 does some
     # work then sets a shared flag (kernel/main.c's `started`), and hart 1

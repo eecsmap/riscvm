@@ -1,6 +1,6 @@
 from riscvm import Bus, RAM, CPU, Instruction
 from riscvm.csr import CSR, PrivilegeLevel
-from riscvm.trap import csr_read, csr_write, raise_trap, check_interrupt, MSTATUS_SIE, MSTATUS_MIE
+from riscvm.trap import csr_read, csr_write, raise_trap, check_interrupt, MSTATUS_SIE, MSTATUS_MIE, MIP_SEIP
 from riscvm.clint import CLINT
 from riscvm.plic import PLIC
 import pytest
@@ -236,7 +236,12 @@ def test_check_interrupt_indexes_clint_and_plic_by_hartid():
     # see their own device interrupts, or spuriously fire on hart 0's.
     clint = CLINT(0x10000, nhart=3)
     clint.mtimecmp[1] = 5
-    plic = PLIC(0x400000)
+
+    class FakeDevice:
+        interrupt_status = 1
+
+    dev = FakeDevice()
+    plic = PLIC(0x400000, devices_by_irq={1: dev})
 
     hart0 = make_cpu()
     hart0.hartid = 0
@@ -261,6 +266,26 @@ def test_check_interrupt_indexes_clint_and_plic_by_hartid():
     assert hart0.pc.value == 0x1000
     assert check_interrupt(hart1)      # hart1's mtimecmp[1] == 5 has passed
     assert hart1.pc.value == 0x5000
+
+    # Same isolation check for PLIC: xv6's plicinithart() enables IRQs only
+    # on *this* hart's S-mode context (2*hartid+1), so hart0 uses context 1
+    # and hart1 uses context 3. Enable a pending IRQ on context 3 only, and
+    # confirm check_interrupt sets MIP.SEIP for hart1 but not hart0 --
+    # exercising the `2 * cpu.hartid + 1` computation itself, not just that
+    # some PLIC object exists.
+    plic.write(1 * 4, 4, 1)               # priority[1] = 1
+    plic.write(0x2000 + 3 * 0x80, 4, 1 << 1)  # enable irq 1 on context 3 (hart1 S) only
+    plic.write(0x200000 + 3 * 0x1000, 4, 0)   # threshold[context 3] = 0
+
+    hart0.clint = None  # isolate PLIC's contribution to MIP from CLINT's
+    hart1.clint = None
+    hart0.plic = plic
+    hart1.plic = plic
+
+    check_interrupt(hart0)
+    assert hart0.csrs[CSR.MIP.value] & MIP_SEIP == 0, "hart0's context (1) was never enabled"
+    check_interrupt(hart1)
+    assert hart1.csrs[CSR.MIP.value] & MIP_SEIP != 0, "hart1's context (3) is enabled and pending"
 
 def test_plic_threshold_masks_low_priority():
     class FakeDevice:

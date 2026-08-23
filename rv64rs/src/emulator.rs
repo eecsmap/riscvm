@@ -12,8 +12,8 @@
 use crate::bus::{Bus, Device};
 use crate::clint::Clint;
 use crate::cpu::Cpu;
-use crate::error::EmuError;
-use crate::plic::Plic;
+use crate::error::{error, EmuError};
+use crate::plic::{Plic, MAX_CONTEXTS};
 use crate::ram::Ram;
 use crate::uart::Uart;
 use crate::virtio::VirtIOBlk;
@@ -111,6 +111,23 @@ impl Xv6Emulator {
         disk_image: Option<Vec<u8>>,
         ncpu: u64,
     ) -> Result<Self, EmuError> {
+        if ncpu == 0 {
+            return error("ncpu must be at least 1");
+        }
+        // xv6's plicinithart() uses S-mode context 2*hart+1; Plic's context
+        // arrays are a fixed MAX_CONTEXTS entries (valid indices 0..
+        // MAX_CONTEXTS-1 -- see plic.rs), so a hart whose context falls
+        // outside that range would silently never see an external
+        // interrupt (enable/threshold reads/writes on an out-of-range
+        // context are no-ops there, not an error). Largest hartid with
+        // 2*hartid+1 <= MAX_CONTEXTS-1 is (MAX_CONTEXTS-2)/2, so the
+        // largest ncpu (hartid runs 0..ncpu-1) is one more than that.
+        let max_ncpu = (MAX_CONTEXTS as u64) / 2;
+        if ncpu > max_ncpu {
+            return error(format!(
+                "ncpu {ncpu} exceeds the {max_ncpu} harts this Plic's {MAX_CONTEXTS} contexts can address (context = 2*hartid+1)"
+            ));
+        }
         // pad up to the next page boundary: a raw `objcopy -O binary` image
         // doesn't always include .bss, so the kernel can genuinely read/
         // write just past the loaded bytes before reaching the stack --
@@ -162,9 +179,15 @@ impl Xv6Emulator {
         Ok(Xv6Emulator { bus, cpus })
     }
 
-    /// Back-compat accessor: hart 0. Existing single-hart call sites
-    /// (`emu.cpu.step()`, `dump_registers(&emu.cpu)`, ...) become
-    /// `emu.cpu().step(&mut emu.bus)` etc.
+    /// Back-compat accessor: hart 0. Existing single-hart call sites that
+    /// only touch the `Cpu` (`emu.cpu.regs...`, `dump_registers(&emu.cpu)`)
+    /// become `emu.cpu().regs...` / `dump_registers(emu.cpu())`. A call
+    /// site that *also* needs `bus` in the same expression (e.g.
+    /// `emu.cpu.step()` -> stepping hart 0) can't go through this method:
+    /// `cpu(&mut self)` borrows all of `emu`, so `&mut emu.bus` can't be
+    /// borrowed alongside it. Use the split-field form directly instead --
+    /// `emu.cpus[0].step(&mut emu.bus)` -- as main.rs and the integration
+    /// tests do.
     pub fn cpu(&mut self) -> &mut Cpu {
         &mut self.cpus[0]
     }

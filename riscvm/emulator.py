@@ -132,6 +132,7 @@ class Emulator:
 class XV6(Emulator):
 
     def __init__(self, program, uart_output_file=None, address=0, disk_image=None, uart_input_file=None, ncpu=1):
+        assert ncpu >= 1, f'ncpu must be >= 1, got {ncpu}'
         ram = RAM()
         # pad up to the next page boundary: a raw `objcopy -O binary` image
         # doesn't always include .bss (depends on the toolchain/linker

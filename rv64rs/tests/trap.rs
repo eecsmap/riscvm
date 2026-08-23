@@ -5,14 +5,15 @@
 //! test_plic_threshold_masks_low_priority) since they don't touch CPU at
 //! all -- same reasoning as rvc.rs owning its own decode/execute tests.
 
-use rv64rs::bus::Bus;
+use rv64rs::bus::{Bus, Device};
 use rv64rs::clint::Clint;
 use rv64rs::cpu::Cpu;
 use rv64rs::csr;
 use rv64rs::decode::Instruction;
+use rv64rs::plic::Plic;
 use rv64rs::ram::Ram;
-use rv64rs::trap::{check_interrupt, csr_read, csr_write, raise_trap, MSTATUS_MIE, MSTATUS_SIE};
-use std::cell::RefCell;
+use rv64rs::trap::{check_interrupt, csr_read, csr_write, raise_trap, MIP_SEIP, MSTATUS_MIE, MSTATUS_SIE};
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 fn cpu() -> (Cpu, Bus) {
@@ -245,6 +246,31 @@ fn check_interrupt_indexes_clint_and_plic_by_hartid() {
     assert_eq!(hart0.pc, 0x1000);
     assert!(check_interrupt(&mut hart1)); // hart1's mtimecmp[1] == 5 has passed
     assert_eq!(hart1.pc, 0x5000);
+
+    // Same isolation check for PLIC: xv6's plicinithart() enables IRQs only
+    // on *this* hart's S-mode context (2*hart+1), so hart0 uses context 1
+    // and hart1 uses context 3. Enable a pending IRQ on context 3 only, and
+    // confirm check_interrupt() sets MIP.SEIP for hart1 but not hart0 --
+    // exercising the `2 * cpu.hartid + 1` computation itself, not just that
+    // some PLIC is attached.
+    let irq1_pending = Rc::new(Cell::new(1u32));
+    let mut plic = Plic::new(0x400000);
+    let status = irq1_pending.clone();
+    plic.register_irq(1, move || status.get());
+    plic.write(4, 4, 1).unwrap(); // priority[1] = 1
+    plic.write(0x2000 + 3 * 0x80, 4, 1 << 1).unwrap(); // enable irq1 on context 3 (hart1 S) only
+    plic.write(0x200000 + 3 * 0x1000, 4, 0).unwrap(); // threshold[context 3] = 0
+    let plic = Rc::new(RefCell::new(plic));
+
+    hart0.clint = None; // isolate PLIC's contribution to MIP from CLINT's
+    hart1.clint = None;
+    hart0.plic = Some(plic.clone());
+    hart1.plic = Some(plic.clone());
+
+    check_interrupt(&mut hart0);
+    assert_eq!(hart0.csrs[csr::MIP] & MIP_SEIP, 0, "hart0's context (1) was never enabled");
+    check_interrupt(&mut hart1);
+    assert_ne!(hart1.csrs[csr::MIP] & MIP_SEIP, 0, "hart1's context (3) is enabled and pending");
 }
 
 #[test]
