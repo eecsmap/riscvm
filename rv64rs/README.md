@@ -78,12 +78,41 @@ cargo run --release -- xv6-boot ../tests/kernel64gc_nopageflush.bin
 ```
 
 Add an address (default `0x80000000`), an instruction limit (default:
-unlimited — stops only on error), and a filesystem image path as further
-positional args:
+unlimited — stops only on error), a filesystem image path, and a hart
+count as further positional args:
 
 ```sh
-cargo run --release -- xv6-boot <kernel.bin> [address_hex] [fs_image] [instr_limit]
+cargo run --release -- xv6-boot <kernel.bin> [address_hex] [fs_image] [instr_limit] [ncpu]
 ```
+
+### Multicore (`ncpu`)
+
+`ncpu` boots N harts, like qemu's own `-smp N` (xv6-riscv's `make qemu`
+uses `-smp 3` by default). Every hart resets at the same vector and is
+stepped round-robin, one instruction per hart per round, so the
+`kernel/main.c` hart-0-inits-then-wakes-the-rest handshake xv6 does at
+boot works the same way it does on real hardware:
+
+```sh
+cargo run --release -- xv6-boot ../tests/xv6-kernel-fs-small.bin 0x80000000 ../tests/fs.img 0 3
+```
+
+This reaches the shell with the same banner real qemu prints for a
+multicore boot:
+
+```
+hart 1 starting
+hart 2 starting
+init: starting sh
+$
+```
+
+Unlike riscvm's Python emulator (where a 3-hart boot takes minutes — see
+its own README), this finishes in a few seconds even in a debug build,
+since rv64rs boots the same kernel single-core in single-digit seconds
+(see "Boot all the way to a shell prompt" below); `tests/smp.rs`'s
+`smp_boot_prints_the_multicore_hart_starting_banner` exercises this exact
+scenario as a real, fast automated test.
 
 ### Boot all the way to a shell prompt, with precise timing
 
@@ -210,11 +239,19 @@ possible:
 | `emulator.rs` | `emulator.py` | `Emulator`/`XV6` assembly (RAM+stack; +devices+bootloader) |
 | `asm.rs` | `tools/as.py` | tiny hand-assembly helpers (no `riscv64-linux-gnu-gcc` on this machine) |
 
-`Cpu.bus` is `Rc<RefCell<Bus>>` (not an owned `Bus`) because VirtIOBlk needs
-to read/write arbitrary guest memory through the same bus it's registered
-on — see `cpu.rs`'s doc comment and the stage 7 commit message for why, and
-why `Bus` uses a `RefCell` per device slot rather than one around the whole
-struct (the latter panics on VirtIOBlk's reentrant access).
+`Bus` is not owned by `Cpu` — it lives on `Emulator`/`Xv6Emulator` instead,
+and every `Cpu` method that touches memory (`fetch`/`read`/`write`/
+`execute`/`step`, plus `mmu::translate`) takes `bus: &mut Bus` as an
+explicit parameter. This is what makes SMP possible: real hardware has one
+physical bus shared by every hart, so a single `Cpu` can't own it once
+there's more than one (`Xv6Emulator::new_smp` builds one `Cpu` per hart,
+all sharing the same `Bus`) — see `cpu.rs`'s doc comment for the full
+history (an earlier stage did give `Cpu` an `Rc<RefCell<Bus>>` for
+VirtIOBlk's sake, then the P7 perf pass made it an owned `Bus` instead, and
+SMP moved it out of `Cpu` entirely). CLINT/UART/PLIC, by contrast, *are*
+`Rc<RefCell<_>>` — `Bus` and every hart's `Cpu` each hold their own clone
+of the same instance, which is what real MMIO-shared-with-the-CPU devices
+need, and unlike RAM they're off the hot path (see `bus.rs`'s doc comment).
 
 ## What's not here
 

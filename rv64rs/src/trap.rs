@@ -65,6 +65,14 @@ pub fn csr_read(cpu: &Cpu, addr: u32) -> u64 {
 }
 
 pub fn csr_write(cpu: &mut Cpu, addr: u32, value: u64) {
+    if addr == csr::MHARTID {
+        // read-only on real hardware; a no-op here still lets the
+        // `csrrs a1, mhartid, zero` idiom xv6 actually uses (a pure read:
+        // rs1=x0 means the "write" is old|0, a no-op regardless) work,
+        // while rejecting any write that would otherwise let cpu.csrs and
+        // cpu.hartid (what CLINT/PLIC routing actually keys off) disagree.
+        return;
+    }
     if let Some((base_addr, mask)) = aliased_target(addr) {
         let base = cpu.csrs.get(base_addr);
         cpu.csrs.insert(base_addr, (base & !mask) | (value & mask));
@@ -129,10 +137,14 @@ pub fn raise_trap(cpu: &mut Cpu, cause: u64, is_interrupt: bool, tval: u64) -> u
 pub fn check_interrupt(cpu: &mut Cpu) -> bool {
     let mut mip = cpu.csrs.get(csr::MIP);
     if let Some(clint) = &cpu.clint {
-        mip = if clint.borrow().pending() { mip | MIP_MTIP } else { mip & !MIP_MTIP };
+        mip = if clint.borrow().pending(cpu.hartid as usize) { mip | MIP_MTIP } else { mip & !MIP_MTIP };
     }
     if let Some(plic) = &cpu.plic {
-        mip = if plic.borrow().claimable(1) { mip | MIP_SEIP } else { mip & !MIP_SEIP };
+        // xv6's plicinithart() only ever enables each hart's S-mode context
+        // (PLIC_SCONTEXT(hart) == 2*hart+1); M-mode contexts go unused since
+        // mideleg hands external interrupts to S-mode.
+        let context = 2 * cpu.hartid + 1;
+        mip = if plic.borrow().claimable(context) { mip | MIP_SEIP } else { mip & !MIP_SEIP };
     }
     cpu.csrs.insert(csr::MIP, mip);
 

@@ -36,6 +36,18 @@ Boots identically, but `kinit()`'s byte-by-byte zero-fill of 128MB of RAM
 takes on the order of *hours* in this pure-Python interpreter. Use the
 small kernel above unless you specifically need the 128MB layout.
 
+### Multicore (`--smp`)
+
+```sh
+uv run python3 -m riscvm.emulator --smp 3 --address 0x80000000 --fs-image tests/fs.img tests/xv6-kernel-fs-small.bin
+```
+
+Boots N harts (like qemu's `-smp N`; xv6-riscv's own `make qemu` defaults
+to 3) round-robin, one instruction per hart per round. Reproduces the same
+`hart 1 starting` / `hart 2 starting` banner real qemu prints, but takes
+roughly N times as long as single-core since the harts split the
+interpreter's instruction throughput.
+
 ### Piped / scripted input instead of your keyboard
 
 ```sh

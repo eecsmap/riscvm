@@ -26,6 +26,7 @@ pub const MEPC: u32 = 0x341;
 pub const MCAUSE: u32 = 0x342;
 pub const MTVAL: u32 = 0x343;
 pub const MIP: u32 = 0x344;
+pub const MHARTID: u32 = 0xf14;
 
 /// Corresponds to how riscvm's cpu.py stores cpu.csrs -- a plain dict keyed
 /// by CSR address, defaulting missing entries to 0 (`.get(addr, 0)`). The

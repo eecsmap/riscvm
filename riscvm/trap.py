@@ -55,6 +55,13 @@ def csr_read(cpu, addr):
     return cpu.csrs.get(addr, 0)
 
 def csr_write(cpu, addr, value):
+    if addr == CSR.MHARTID.value:
+        # read-only on real hardware; a no-op here still lets the
+        # `csrrs a1, mhartid, zero` idiom xv6 actually uses (a pure read:
+        # rs1=x0 means the "write" is old|0, a no-op regardless) work,
+        # while rejecting any write that would otherwise let cpu.csrs and
+        # cpu.hartid (what CLINT/PLIC routing actually keys off) disagree.
+        return
     alias = _ALIASED.get(addr)
     if alias:
         base_addr, mask = alias
@@ -130,9 +137,12 @@ def check_interrupt(cpu):
     '''
     mip = cpu.csrs.get(CSR.MIP.value, 0)
     if cpu.clint is not None:
-        mip = (mip | MIP_MTIP) if cpu.clint.pending() else (mip & ~MIP_MTIP)
+        mip = (mip | MIP_MTIP) if cpu.clint.pending(cpu.hartid) else (mip & ~MIP_MTIP)
     if cpu.plic is not None:
-        mip = (mip | MIP_SEIP) if cpu.plic.claimable(1) else (mip & ~MIP_SEIP)
+        # xv6's plicinithart() only ever enables each hart's S-mode context
+        # (PLIC_SCONTEXT(hart) == 2*hart+1); M-mode contexts go unused since
+        # mideleg hands external interrupts to S-mode.
+        mip = (mip | MIP_SEIP) if cpu.plic.claimable(2 * cpu.hartid + 1) else (mip & ~MIP_SEIP)
     cpu.csrs[CSR.MIP.value] = mip
 
     mie = cpu.csrs.get(CSR.MIE.value, 0)

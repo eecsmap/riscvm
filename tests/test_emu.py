@@ -1,4 +1,7 @@
+import struct
 from binascii import unhexlify
+from riscvm import CPU
+from riscvm.csr import CSR
 from riscvm.emulator import Emulator, XV6
 from riscvm.exception import InternalException
 from pytest import raises
@@ -52,3 +55,61 @@ def test_xv6_uart_console_input_reaches_the_shell():
     RBR, LSR = 0, 5
     assert xv6.cpu.bus.read(UART_BASE + LSR, 1) & 0x1 == 1
     assert xv6.cpu.bus.read(UART_BASE + RBR, 1) == ord('l')
+
+def test_xv6_smp_boots_one_cpu_object_per_hart():
+    # --smp N (real qemu's own flag name) should give us N independent CPU
+    # objects -- like N harts resetting at the same vector on real
+    # hardware -- each with its own mhartid CSR but sharing the single
+    # CLINT/PLIC/UART/bus every hart on the same board would share.
+    xv6 = XV6(bytes(64), address=0x80000000, ncpu=3)
+    assert len(xv6.cpus) == 3
+    assert xv6.cpu is xv6.cpus[0]  # back-compat: XV6.cpu is still hart 0
+
+    for expected_hartid, cpu in enumerate(xv6.cpus):
+        assert cpu.hartid == expected_hartid
+        assert cpu.csrs[CSR.MHARTID.value] == expected_hartid
+        assert cpu.pc.value == 0x1000  # every hart resets at the same vector
+        assert cpu.bus is xv6.cpu.bus
+        assert cpu.clint is xv6.cpu.clint
+        assert cpu.plic is xv6.cpu.plic
+        assert cpu.uart is xv6.cpu.uart
+
+    assert xv6.cpu.clint.nhart == 3
+
+def test_xv6_default_ncpu_is_a_single_hart():
+    xv6 = XV6(bytes(64), address=0x80000000)
+    assert len(xv6.cpus) == 1
+    assert xv6.cpu.clint.nhart == 1
+
+def test_xv6_rejects_ncpu_zero():
+    # ncpu=0 used to silently build an empty cpus list, so self.cpu =
+    # self.cpus[0] raised an opaque IndexError instead of a clear error.
+    with raises(AssertionError):
+        XV6(bytes(64), address=0x80000000, ncpu=0)
+
+def test_run_round_robins_harts_so_a_spin_wait_actually_unblocks():
+    # this is the same shape as xv6's real boot handshake: hart 0 does some
+    # work then sets a shared flag (kernel/main.c's `started`), and hart 1
+    # busy-waits on it (`while(started == 0);`) before proceeding. If run()
+    # let one hart run to completion before ever scheduling another, hart
+    # 1's spin loop here (and xv6's) would never see hart 0's write.
+    code = bytearray(0x1114)
+    struct.pack_into('<I', code, 0x1000, 0x00100293)  # addi t0, x0, 1
+    struct.pack_into('<I', code, 0x1004, 0x00502023)  # sw   t0, 0(x0)      -- flag <- 1
+    struct.pack_into('<I', code, 0x1008, 0x0000006f)  # jal  x0, 0          -- spin forever
+    struct.pack_into('<I', code, 0x1100, 0x00002303)  # lw   t1, 0(x0)      -- read flag
+    struct.pack_into('<I', code, 0x1104, 0xfe030ee3)  # beq  t1, x0, -4     -- spin while flag == 0
+    struct.pack_into('<I', code, 0x1108, 0x00200393)  # addi t2, x0, 2
+    struct.pack_into('<I', code, 0x110c, 0x00702223)  # sw   t2, 4(x0)      -- marker <- 2
+    struct.pack_into('<I', code, 0x1110, 0x0000006f)  # jal  x0, 0          -- spin forever
+
+    emu = Emulator(code, address=0)
+    emu.cpu.pc.value = 0x1000
+    hart1 = CPU(emu.cpu.bus)
+    hart1.pc.value = 0x1100
+    emu.cpus.append(hart1)
+
+    emu.run(limit=8)
+
+    assert emu.cpu.bus.read(0, 4) == 1  # hart 0's flag write went through
+    assert emu.cpu.bus.read(4, 4) == 2  # hart 1 saw it and left its spin loop

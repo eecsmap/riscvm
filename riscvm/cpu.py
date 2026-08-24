@@ -20,16 +20,18 @@ class CPU:
     RV64I_SIZE = 4
     RV64C_SIZE = 2
 
-    def __init__(self, bus):
+    def __init__(self, bus, hartid=0):
         self.instruction = None
         self.registers = [Register(0, f'x{i}') for i in range(32)]
         self.registers[0] = FixedRegister(0, 'x0')
         self.pc = Register()
         self.sp = self.registers[2]
         self.bus = bus
+        self.hartid = hartid
         self.csrs = {
             CSR.MSTATUS.value : 0xa00000000,
             CSR.MIE.value : 0x222,
+            CSR.MHARTID.value : hartid,
         } # hopefully we are not going to use csrs too frequently, otherwise we need an array
         self.mode = PrivilegeLevel.M.value
         # set by XV6 (or any caller wanting timer/external/console interrupts);

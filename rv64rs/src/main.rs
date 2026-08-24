@@ -3,7 +3,9 @@
 //! - `stack-demo` (stage 2): runs a hand-assembled program that actually
 //!   uses the stack region via LOAD/STORE.
 //! - `xv6-boot` (stage 5): boots a kernel image through Xv6Emulator (CLINT/
-//!   UART/PLIC wired up) and prints whatever it writes to the UART.
+//!   UART/PLIC wired up) and prints whatever it writes to the UART. Takes
+//!   an optional trailing `ncpu` (SMP support, see emulator.rs's
+//!   `Xv6Emulator::new_smp`) to boot multiple harts, like qemu's `-smp N`.
 //! - anything else: generic run mode for poking at other programs.
 
 use rv64rs::asm::stack_demo_program;
@@ -30,12 +32,12 @@ fn dump_registers(cpu: &rv64rs::cpu::Cpu) {
 fn run_fib(path: &str) {
     let code = std::fs::read(path).expect("failed to read fib.bin");
     let mut emu = Emulator::new(&code, 0x1000).expect("failed to set up emulator");
-    emu.cpu.regs.write(10, 80); // a0 = 80, same as tests/test_emu.py::test_fib
+    emu.cpu().regs.write(10, 80); // a0 = 80, same as tests/test_emu.py::test_fib
 
     let err = emu.run();
 
     const EXPECTED: u64 = 23416728348467685;
-    let a0 = emu.cpu.regs.read(10);
+    let a0 = emu.cpu().regs.read(10);
     println!("stopped: {err}");
     println!("a0 = fib(80) = {a0} (expected {EXPECTED}, match = {})", a0 == EXPECTED);
 }
@@ -45,13 +47,13 @@ fn run_stack_demo() {
     let mut emu = Emulator::new(&code, 0x1000).expect("failed to set up emulator");
     let err = emu.run();
 
-    let a0 = emu.cpu.regs.read(10);
+    let a0 = emu.cpu().regs.read(10);
     println!("stopped: {err}");
     println!("a0 = {a0} (expected 43, match = {})", a0 == 43);
     println!(
         "stack[0x3000..0x3008) = {}, {}",
-        emu.cpu.bus.read(0x3000, 4).unwrap(),
-        emu.cpu.bus.read(0x3004, 4).unwrap()
+        emu.bus.read(0x3000, 4).unwrap(),
+        emu.bus.read(0x3004, 4).unwrap()
     );
 }
 
@@ -105,17 +107,23 @@ fn spawn_stdin_reader() -> StdinChannel {
     StdinChannel(rx)
 }
 
-fn run_xv6_boot(path: &str, address: u64, limit: u64, fs_image: Option<&str>) {
+fn run_xv6_boot(path: &str, address: u64, limit: u64, fs_image: Option<&str>, ncpu: u64) {
     let code = std::fs::read(path).expect("failed to read kernel image");
     let disk_image = fs_image.map(|p| std::fs::read(p).expect("failed to read fs image"));
     let uart_input: Option<Box<dyn std::io::Read>> = Some(Box::new(spawn_stdin_reader()));
-    let mut emu = Xv6Emulator::new(&code, address, Some(Box::new(std::io::stdout())), uart_input, disk_image)
+    let mut emu = Xv6Emulator::new_smp(&code, address, Some(Box::new(std::io::stdout())), uart_input, disk_image, ncpu)
         .expect("failed to set up XV6 emulator");
 
+    // Round-robin every hart, one instruction each per round -- see
+    // Xv6Emulator::run()'s doc comment for why this matters for xv6's
+    // secondary-hart boot handshake. `count` is instructions-per-hart
+    // (== rounds), matching --smp 1's old per-instruction count exactly.
     let mut count: u64 = 0;
-    let err = loop {
-        if let Err(e) = emu.cpu.step() {
-            break e;
+    let err = 'outer: loop {
+        for cpu in &mut emu.cpus {
+            if let Err(e) = cpu.step(&mut emu.bus) {
+                break 'outer e;
+            }
         }
         count += 1;
         if limit != 0 && count >= limit {
@@ -123,8 +131,11 @@ fn run_xv6_boot(path: &str, address: u64, limit: u64, fs_image: Option<&str>) {
             std::process::exit(0);
         }
     };
-    eprintln!("\nstopped after {count} instructions: {err}");
-    dump_registers(&emu.cpu);
+    eprintln!("\nstopped after {count} rounds: {err}");
+    for cpu in &emu.cpus {
+        eprintln!("--- hart {} ---", cpu.hartid);
+        dump_registers(cpu);
+    }
 }
 
 struct Tee(Rc<RefCell<Vec<u8>>>);
@@ -156,11 +167,11 @@ fn run_xv6_time_to_shell(path: &str, address: u64, fs_image: Option<&str>, limit
     let mut count: u64 = 0;
     let mut bare_count: u64 = 0; // satp.MODE == Bare: translate() is a no-op, a TLB couldn't help these
     loop {
-        let paging_on = emu.cpu.csrs.get(rv64rs::csr::SATP) >> 60 == 8;
+        let paging_on = emu.cpus[0].csrs.get(rv64rs::csr::SATP) >> 60 == 8;
         if !paging_on {
             bare_count += 1;
         }
-        if let Err(e) = emu.cpu.step() {
+        if let Err(e) = emu.cpus[0].step(&mut emu.bus) {
             eprintln!("\nstopped early after {count} instructions: {e}");
             std::process::exit(1);
         }
@@ -198,7 +209,7 @@ fn run_generic(path: &str, address: u64) {
     let mut emu = Emulator::new(&code, address).expect("failed to set up emulator");
     let err = emu.run();
     println!("stopped: {err}");
-    dump_registers(&emu.cpu);
+    dump_registers(emu.cpu());
 }
 
 fn main() {
@@ -217,6 +228,9 @@ fn main() {
         // producing a kernel boot against a blank synthetic disk instead of
         // a clear error. Fixed by both reordering these to match and by
         // parse_limit erroring loudly instead of defaulting on bad input.)
+        // xv6-boot additionally takes a trailing [ncpu] (default 1), like
+        // qemu's own -smp N (xv6-riscv's make qemu defaults to 3) -- see
+        // Xv6Emulator::new_smp.
         Some("xv6-boot") => {
             let path = args.get(2).map(String::as_str).unwrap_or("../tests/kernel64gc_nopageflush.bin");
             let address = args
@@ -225,7 +239,8 @@ fn main() {
                 .unwrap_or(0x8000_0000);
             let fs_image = args.get(4).map(String::as_str);
             let limit = parse_limit(args.get(5), 0);
-            run_xv6_boot(path, address, limit, fs_image);
+            let ncpu: u64 = args.get(6).map(|s| s.parse().expect("ncpu must be a number")).unwrap_or(1);
+            run_xv6_boot(path, address, limit, fs_image, ncpu);
         }
         Some("xv6-time-to-shell") => {
             let path = args.get(2).map(String::as_str).unwrap_or("../tests/xv6-kernel-fs-small.bin");
@@ -248,7 +263,7 @@ fn main() {
             eprintln!("usage:");
             eprintln!("  rv64rs fib [path]");
             eprintln!("  rv64rs stack-demo");
-            eprintln!("  rv64rs xv6-boot [kernel] [address_hex] [fs_image] [instr_limit]");
+            eprintln!("  rv64rs xv6-boot [kernel] [address_hex] [fs_image] [instr_limit] [ncpu]");
             eprintln!("  rv64rs xv6-time-to-shell [kernel] [address_hex] [fs_image] [instr_limit]");
             eprintln!("  rv64rs <path> [address_hex]");
             std::process::exit(1);

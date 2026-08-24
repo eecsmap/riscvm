@@ -38,9 +38,18 @@
 //! need entirely. With VirtIOBlk no longer holding a back-reference,
 //! nothing else in the crate needs `Bus` to be shared -- Clint/Uart/Plic
 //! are independently Rc<RefCell<_>> (Cpu holds its own clone of each for
-//! tick()/poll_input()/claimable(), unrelated to Bus's own sharing), so
-//! cpu.bus went back to being a plain owned `Bus`, cutting the RefCell
-//! check out of every single bus access.
+//! tick()/poll_input()/claimable(), unrelated to Bus's own sharing).
+//!
+//! SMP support went one step further: `Bus` moved out of `Cpu` entirely
+//! (see emulator.rs, which now owns one `Bus` shared by every hart's `Cpu`)
+//! and every method that touches memory -- fetch/read/write/execute/
+//! execute_compressed/step, plus mmu::translate -- takes `bus: &mut Bus` as
+//! an explicit parameter instead. This is the same pattern VirtIOBlk's DMA
+//! already established: real hardware has exactly one physical bus shared
+//! by every hart, so a single `Cpu` can no longer own it once there's more
+//! than one `Cpu`. Threading `&mut Bus` through keeps that sharing at zero
+//! cost (no RefCell, no dynamic borrow check) -- same rationale as the
+//! rest of this doc comment's history, just extended to N harts.
 use crate::bus::Bus;
 use crate::clint::Clint;
 use crate::csr;
@@ -70,9 +79,9 @@ const UART_POLL_INTERVAL: i64 = 4096;
 pub struct Cpu {
     pub regs: Registers,
     pub pc: u64,
-    pub bus: Bus,
     pub csrs: Csrs,
     pub mode: u8,
+    pub hartid: u64,
     pub clint: Option<Rc<RefCell<Clint>>>,
     pub uart: Option<Rc<RefCell<Uart>>>,
     pub plic: Option<Rc<RefCell<Plic>>>,
@@ -81,19 +90,24 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(bus: Bus) -> Self {
+    /// `hartid` is 0 for a single-hart Emulator/Xv6Emulator; SMP setups
+    /// (emulator.rs's `Xv6Emulator::new(..., ncpu)`) construct one `Cpu`
+    /// per hart with hartid 0..ncpu, matching real qemu's `-smp N` and
+    /// riscvm's own cpu.py.
+    pub fn new(hartid: u64) -> Self {
         // Matches cpu.py's CPU.__init__: mstatus starts with some bits set
         // (notably MPP=11, i.e. M-mode, per the "hopefully we don't use
         // csrs too frequently" comment there), mie has MSIE|MTIE preset.
         let mut csrs = Csrs::new();
         csrs.insert(csr::MSTATUS, 0x000a_0000_0000);
         csrs.insert(csr::MIE, 0x222);
+        csrs.insert(csr::MHARTID, hartid);
         Cpu {
             regs: Registers::new(),
             pc: 0,
-            bus,
             csrs,
             mode: csr::PRIV_M,
+            hartid,
             clint: None,
             uart: None,
             plic: None,
@@ -106,7 +120,7 @@ impl Cpu {
     /// check for a deliverable interrupt, then read one instruction word
     /// at pc and dispatch on the low 2 bits between full RV64I (0b11) and
     /// compressed (anything else).
-    pub fn fetch(&mut self) -> Result<DecodedInstruction, EmuError> {
+    pub fn fetch(&mut self, bus: &mut Bus) -> Result<DecodedInstruction, EmuError> {
         if let Some(clint) = &self.clint {
             clint.borrow_mut().tick();
         }
@@ -119,8 +133,8 @@ impl Cpu {
         }
         trap::check_interrupt(self);
 
-        let pa = mmu::translate(self, self.pc, Access::X)?;
-        let word = self.bus.read(pa, 4)? as u32;
+        let pa = mmu::translate(self, self.pc, Access::X, bus)?;
+        let word = bus.read(pa, 4)? as u32;
         if word & 0b11 == 0b11 {
             Ok(DecodedInstruction::Full(Instruction::new(word)))
         } else {
@@ -129,36 +143,36 @@ impl Cpu {
     }
 
     /// Mirrors CPU.read(address, size): translate then read.
-    pub fn read(&mut self, address: u64, size: u8) -> Result<u64, EmuError> {
-        let pa = mmu::translate(self, address, Access::R)?;
-        self.bus.read(pa, size)
+    pub fn read(&mut self, address: u64, size: u8, bus: &mut Bus) -> Result<u64, EmuError> {
+        let pa = mmu::translate(self, address, Access::R, bus)?;
+        bus.read(pa, size)
     }
 
     /// Mirrors CPU.write(address, size, value): translate then write.
-    pub fn write(&mut self, address: u64, size: u8, value: u64) -> Result<(), EmuError> {
-        let pa = mmu::translate(self, address, Access::W)?;
-        self.bus.write(pa, size, value)
+    pub fn write(&mut self, address: u64, size: u8, value: u64, bus: &mut Bus) -> Result<(), EmuError> {
+        let pa = mmu::translate(self, address, Access::W, bus)?;
+        bus.write(pa, size, value)
     }
 
     /// Mirrors CPU.execute(instruction) for a full RV64I instruction.
-    pub fn execute(&mut self, instruction: &Instruction) -> Result<(), EmuError> {
-        let next_pc = execute::execute(instruction, self)?;
+    pub fn execute(&mut self, instruction: &Instruction, bus: &mut Bus) -> Result<(), EmuError> {
+        let next_pc = execute::execute(instruction, self, bus)?;
         self.pc = next_pc;
         Ok(())
     }
 
     /// Same as execute(), for a 16-bit RVC instruction.
-    pub fn execute_compressed(&mut self, instruction: &CInstruction) -> Result<(), EmuError> {
-        let next_pc = rvc::execute(instruction, self)?;
+    pub fn execute_compressed(&mut self, instruction: &CInstruction, bus: &mut Bus) -> Result<(), EmuError> {
+        let next_pc = rvc::execute(instruction, self, bus)?;
         self.pc = next_pc;
         Ok(())
     }
 
     /// One fetch+execute step at the current pc.
-    pub fn step(&mut self) -> Result<(), EmuError> {
-        match self.fetch()? {
-            DecodedInstruction::Full(instr) => self.execute(&instr),
-            DecodedInstruction::Compressed(instr) => self.execute_compressed(&instr),
+    pub fn step(&mut self, bus: &mut Bus) -> Result<(), EmuError> {
+        match self.fetch(bus)? {
+            DecodedInstruction::Full(instr) => self.execute(&instr, bus),
+            DecodedInstruction::Compressed(instr) => self.execute_compressed(&instr, bus),
         }
     }
 

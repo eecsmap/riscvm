@@ -33,7 +33,7 @@ const MAX_IRQ: usize = 32; // this emulator's device set only uses IRQ 1 and 10;
 // Plic::claimable() on *every instruction* (same pattern P1 already fixed
 // for CSRs) made SipHash/hashbrown machinery ~9% of sampled time again,
 // even after the CSR HashMap was long gone.
-const MAX_CONTEXTS: usize = 64;
+pub const MAX_CONTEXTS: usize = 64;
 
 pub struct Plic {
     size: u64,

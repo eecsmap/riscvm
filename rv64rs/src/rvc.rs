@@ -9,6 +9,7 @@
 //! compressed floating-point loads/stores, no C.SLLI64 etc.) -- this
 //! project doesn't implement those either, so there's nothing to port.
 
+use crate::bus::Bus;
 use crate::cpu::Cpu;
 use crate::error::{error, EmuError};
 
@@ -159,7 +160,7 @@ fn nz(v: i64) -> Result<i64, EmuError> {
 /// (default: pc+2). Mirrors rv64c.py's actor(), including which mnemonics
 /// share a funct3 slot and are disambiguated further (SUB/XOR/OR/AND vs
 /// SUBW/ADDW by funct2+bit; MV/JR vs ADD/JALR/EBREAK by rs2/rs1 presence).
-pub fn execute(instr: &CInstruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
+pub fn execute(instr: &CInstruction, cpu: &mut Cpu, bus: &mut Bus) -> Result<u64, EmuError> {
     let pc = cpu.pc;
     let default_next = pc.wrapping_add(2);
 
@@ -175,27 +176,27 @@ pub fn execute(instr: &CInstruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             0b010 => {
                 // C.LW: lw rd', offset[6:2](rs1')
                 let addr = cpu.regs.read(instr.rs1_prime()).wrapping_add(instr.offset_6_2() as u64);
-                let v = cpu.read(addr, 4)?;
+                let v = cpu.read(addr, 4, bus)?;
                 cpu.regs.write(instr.rs2_prime(), sext(v as u32, 32) as u64);
                 Ok(default_next)
             }
             0b011 => {
                 // C.LD: ld rd', offset[7:3](rs1')
                 let addr = cpu.regs.read(instr.rs1_prime()).wrapping_add(instr.offset_7_3() as u64);
-                let v = cpu.read(addr, 8)?;
+                let v = cpu.read(addr, 8, bus)?;
                 cpu.regs.write(instr.rs2_prime(), v);
                 Ok(default_next)
             }
             0b110 => {
                 // C.SW: sw rs2', offset[6:2](rs1')
                 let addr = cpu.regs.read(instr.rs1_prime()).wrapping_add(instr.offset_6_2() as u64);
-                cpu.write(addr, 4, cpu.regs.read(instr.rs2_prime()))?;
+                cpu.write(addr, 4, cpu.regs.read(instr.rs2_prime()), bus)?;
                 Ok(default_next)
             }
             0b111 => {
                 // C.SD: sd rs2', offset[7:3](rs1')
                 let addr = cpu.regs.read(instr.rs1_prime()).wrapping_add(instr.offset_7_3() as u64);
-                cpu.write(addr, 8, cpu.regs.read(instr.rs2_prime()))?;
+                cpu.write(addr, 8, cpu.regs.read(instr.rs2_prime()), bus)?;
                 Ok(default_next)
             }
             _ => cpu.illegal_c_instruction(instr),
@@ -323,7 +324,7 @@ pub fn execute(instr: &CInstruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
                     return cpu.illegal_c_instruction(instr);
                 }
                 let addr = cpu.regs.read(2).wrapping_add(instr.offset_8_3_ldsp() as u64);
-                let v = cpu.read(addr, 8)?;
+                let v = cpu.read(addr, 8, bus)?;
                 cpu.regs.write(rd, v);
                 Ok(default_next)
             }
@@ -366,7 +367,7 @@ pub fn execute(instr: &CInstruction, cpu: &mut Cpu) -> Result<u64, EmuError> {
             0b111 => {
                 // C.SDSP: sd rs2, offset[8:3](x2)
                 let addr = cpu.regs.read(2).wrapping_add(instr.offset_8_3_sdsp() as u64);
-                cpu.write(addr, 8, cpu.regs.read(instr.rs2()))?;
+                cpu.write(addr, 8, cpu.regs.read(instr.rs2()), bus)?;
                 Ok(default_next)
             }
             _ => cpu.illegal_c_instruction(instr),
@@ -381,10 +382,10 @@ mod tests {
     use crate::bus::Bus;
     use crate::ram::Ram;
 
-    fn cpu() -> Cpu {
+    fn cpu() -> (Cpu, Bus) {
         let mut bus = Bus::new();
         bus.set_ram(Ram::new(0x10000), 0).unwrap();
-        Cpu::new(bus)
+        (Cpu::new(0), bus)
     }
 
     // rd'/rs1' = a1 (x11, compressed raw 3), rs2' = a5 (x15, compressed raw 7)
@@ -398,20 +399,20 @@ mod tests {
             (0x9dbd, 0xffff_ffff_0000_0001, 0xffff_ffff_ffff_ffff, 0),          // c.addw wraps to 32 bits
         ];
         for (word, a1, a5, expected) in cases {
-            let mut c = cpu();
+            let (mut c, mut bus) = cpu();
             c.regs.write(11, a1);
             c.regs.write(15, a5);
-            c.execute_compressed(&CInstruction::new(word)).unwrap();
+            c.execute_compressed(&CInstruction::new(word), &mut bus).unwrap();
             assert_eq!(c.regs.read(11), expected, "word=0x{word:x}");
         }
     }
 
     #[test]
     fn c_jalr_jumps_and_saves_return_address() {
-        let mut c = cpu();
+        let (mut c, mut bus) = cpu();
         c.pc = 0x1000;
         c.regs.write(10, 0x2000); // a0: jump target
-        c.execute_compressed(&CInstruction::new(0x9502)).unwrap(); // c.jalr a0
+        c.execute_compressed(&CInstruction::new(0x9502), &mut bus).unwrap(); // c.jalr a0
         assert_eq!(c.pc, 0x2000);
         assert_eq!(c.regs.read(1), 0x1002); // ra <- return address (pc + 2)
     }

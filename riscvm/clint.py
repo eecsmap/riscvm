@@ -13,14 +13,15 @@ driven by the CPU: tick() is called once per instruction (see cpu.py).
 
 MTIME_OFFSET = 0xbff8
 MTIMECMP_OFFSET = 0x4000
-NHART = 1
+NHART = 1  # default hart count for a single-core caller
 
 class CLINT:
 
-    def __init__(self, size):
+    def __init__(self, size, nhart=NHART):
         self.size = size
+        self.nhart = nhart
         self.mtime = 0
-        self.mtimecmp = [(1 << 64) - 1] * NHART  # start effectively "never"
+        self.mtimecmp = [(1 << 64) - 1] * nhart  # start effectively "never"
 
     def __len__(self):
         return self.size
@@ -35,7 +36,7 @@ class CLINT:
         assert size == 8, f'clint reads are 8 bytes, got {size}'
         if address == MTIME_OFFSET:
             return self.mtime
-        if MTIMECMP_OFFSET <= address < MTIMECMP_OFFSET + 8 * NHART:
+        if MTIMECMP_OFFSET <= address < MTIMECMP_OFFSET + 8 * self.nhart:
             return self.mtimecmp[(address - MTIMECMP_OFFSET) // 8]
         return 0
 
@@ -43,5 +44,5 @@ class CLINT:
         assert size == 8, f'clint writes are 8 bytes, got {size}'
         if address == MTIME_OFFSET:
             self.mtime = value & ((1 << 64) - 1)
-        elif MTIMECMP_OFFSET <= address < MTIMECMP_OFFSET + 8 * NHART:
+        elif MTIMECMP_OFFSET <= address < MTIMECMP_OFFSET + 8 * self.nhart:
             self.mtimecmp[(address - MTIMECMP_OFFSET) // 8] = value & ((1 << 64) - 1)

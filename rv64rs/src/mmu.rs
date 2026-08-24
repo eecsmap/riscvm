@@ -25,6 +25,7 @@
 //! flush, so a fresh translate() is correct" -- now there is one, so this
 //! keeps that same guarantee.
 
+use crate::bus::Bus;
 use crate::cpu::Cpu;
 use crate::csr;
 use crate::error::{error, EmuError};
@@ -127,15 +128,15 @@ impl Default for Tlb {
 /// the rarely-taken walk still lives in one place instead of being
 /// duplicated at every inlined call site.
 #[inline(always)]
-pub fn translate(cpu: &mut Cpu, va: u64, access: Access) -> Result<u64, EmuError> {
+pub fn translate(cpu: &mut Cpu, va: u64, access: Access, bus: &mut Bus) -> Result<u64, EmuError> {
     let satp = cpu.csrs.get(csr::SATP);
     if satp >> 60 == MODE_BARE {
         return Ok(va);
     }
-    translate_paged(cpu, va, access, satp)
+    translate_paged(cpu, va, access, satp, bus)
 }
 
-fn translate_paged(cpu: &mut Cpu, va: u64, access: Access, satp: u64) -> Result<u64, EmuError> {
+fn translate_paged(cpu: &mut Cpu, va: u64, access: Access, satp: u64, bus: &mut Bus) -> Result<u64, EmuError> {
     let mode = satp >> 60;
     if mode != MODE_SV39 {
         return error(format!("unsupported satp MODE {mode} (only Bare and Sv39 are implemented)"));
@@ -164,7 +165,7 @@ fn translate_paged(cpu: &mut Cpu, va: u64, access: Access, satp: u64) -> Result<
             return error(format!("page fault: page table walk exhausted translating VA 0x{va:x}"));
         }
         let pte_addr = a + vpn[level as usize] * PTE_SIZE;
-        pte = cpu.bus.read(pte_addr, PTE_SIZE as u8)?; // page table entries live in physical memory: no translation here
+        pte = bus.read(pte_addr, PTE_SIZE as u8)?; // page table entries live in physical memory: no translation here
         if pte & PTE_V == 0 {
             return error(format!(
                 "page fault: invalid PTE translating VA 0x{va:x} (level {level}, pte 0x{pte:x} @0x{pte_addr:x})"

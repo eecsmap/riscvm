@@ -14,10 +14,10 @@ fn stack_demo_program_uses_the_stack_correctly() {
 
     // a0 should hold 43: store 42 to the stack, load it back, increment,
     // store again, load the final value.
-    assert_eq!(emu.cpu.regs.read(10), 43);
+    assert_eq!(emu.cpu().regs.read(10), 43);
 
     // Confirm the intermediate stack writes actually landed in the stack
     // device (not somewhere else): sp was set to 0x3000.
-    assert_eq!(emu.cpu.bus.read(0x3000, 4).unwrap(), 42);
-    assert_eq!(emu.cpu.bus.read(0x3004, 4).unwrap(), 43);
+    assert_eq!(emu.bus.read(0x3000, 4).unwrap(), 42);
+    assert_eq!(emu.bus.read(0x3004, 4).unwrap(), 43);
 }

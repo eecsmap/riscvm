@@ -3,31 +3,35 @@
 //! CLINT to test the timer interrupt path) plus, as of this stage, the
 //! Device/MMIO half -- reading/writing MTIME and MTIMECMP from guest code,
 //! the same registers xv6's timerinit()/timervec touch.
+//!
+//! `mtimecmp` is sized by `nhart` (one slot per simulated hart -- see
+//! emulator.rs's SMP support and cpu.rs's `hartid` field) rather than a
+//! fixed-size array, matching riscvm's own clint.py's `nhart` constructor
+//! parameter.
 
 use crate::bus::Device;
 use crate::error::{error, EmuError};
 
-const NHART: usize = 1;
 const MTIME_OFFSET: u64 = 0xbff8;
 const MTIMECMP_OFFSET: u64 = 0x4000;
 
 pub struct Clint {
     size: u64,
     pub mtime: u64,
-    pub mtimecmp: [u64; NHART],
+    pub mtimecmp: Vec<u64>,
 }
 
 impl Clint {
-    pub fn new(size: u64) -> Self {
-        Clint { size, mtime: 0, mtimecmp: [u64::MAX; NHART] } // start effectively "never"
+    pub fn new(size: u64, nhart: usize) -> Self {
+        Clint { size, mtime: 0, mtimecmp: vec![u64::MAX; nhart] } // start effectively "never"
     }
 
     pub fn tick(&mut self) {
         self.mtime = self.mtime.wrapping_add(1);
     }
 
-    pub fn pending(&self) -> bool {
-        self.mtime >= self.mtimecmp[0]
+    pub fn pending(&self, hart: usize) -> bool {
+        self.mtime >= self.mtimecmp[hart]
     }
 }
 
@@ -43,7 +47,8 @@ impl Device for Clint {
         if address == MTIME_OFFSET {
             return Ok(self.mtime);
         }
-        if (MTIMECMP_OFFSET..MTIMECMP_OFFSET + 8 * NHART as u64).contains(&address) {
+        let mtimecmp_end = MTIMECMP_OFFSET + 8 * self.mtimecmp.len() as u64;
+        if (MTIMECMP_OFFSET..mtimecmp_end).contains(&address) {
             return Ok(self.mtimecmp[((address - MTIMECMP_OFFSET) / 8) as usize]);
         }
         Ok(0)
@@ -55,8 +60,11 @@ impl Device for Clint {
         }
         if address == MTIME_OFFSET {
             self.mtime = value;
-        } else if (MTIMECMP_OFFSET..MTIMECMP_OFFSET + 8 * NHART as u64).contains(&address) {
-            self.mtimecmp[((address - MTIMECMP_OFFSET) / 8) as usize] = value;
+        } else {
+            let mtimecmp_end = MTIMECMP_OFFSET + 8 * self.mtimecmp.len() as u64;
+            if (MTIMECMP_OFFSET..mtimecmp_end).contains(&address) {
+                self.mtimecmp[((address - MTIMECMP_OFFSET) / 8) as usize] = value;
+            }
         }
         Ok(())
     }

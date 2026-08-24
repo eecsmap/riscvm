@@ -36,7 +36,7 @@ fn boots_and_prints_xv6_kernel_is_booting() {
 
     let mut emu = Xv6Emulator::new(&code, 0x8000_0000, Some(Box::new(Sink(output.clone()))), None, None).unwrap();
     for _ in 0..5_000_000 {
-        if emu.cpu.step().is_err() {
+        if emu.cpus[0].step(&mut emu.bus).is_err() {
             break;
         }
     }
@@ -65,11 +65,11 @@ fn timer_interrupt_preempts_a_running_loop_via_real_fetch_path() {
     let mut bus = Bus::new();
     bus.set_ram(ram, MAIN_LOOP_ADDR).unwrap();
 
-    let clint = Rc::new(RefCell::new(Clint::new(0x10000)));
+    let clint = Rc::new(RefCell::new(Clint::new(0x10000, 1)));
     clint.borrow_mut().mtimecmp[0] = 0; // pending as soon as it's ticked even once
     bus.set_clint(clint.clone(), 0x0200_0000).unwrap();
 
-    let mut cpu = Cpu::new(bus);
+    let mut cpu = Cpu::new(0);
     cpu.clint = Some(clint);
     cpu.pc = MAIN_LOOP_ADDR;
     cpu.csrs.insert(csr::MTVEC, TRAP_HANDLER_ADDR);
@@ -80,7 +80,7 @@ fn timer_interrupt_preempts_a_running_loop_via_real_fetch_path() {
     // 0), check_interrupt() takes the trap *before* decoding, so this step
     // actually executes the trap handler's first instruction, not the main
     // loop's.
-    cpu.step().unwrap();
+    cpu.step(&mut bus).unwrap();
     assert_eq!(cpu.pc, TRAP_HANDLER_ADDR, "should have landed in the trap handler, not the main loop");
     assert_eq!(cpu.mode, csr::PRIV_M);
     assert_eq!(cpu.csrs[csr::MCAUSE], 7 | (1 << 63)); // machine timer interrupt
@@ -95,7 +95,7 @@ fn timer_interrupt_preempts_a_running_loop_via_real_fetch_path() {
     // re-fire even though CLINT's pending() is still true -- the CPU just
     // keeps looping in the handler, exactly once preempted.
     for _ in 0..50 {
-        cpu.step().unwrap();
+        cpu.step(&mut bus).unwrap();
         assert_eq!(cpu.pc, TRAP_HANDLER_ADDR);
     }
 }
