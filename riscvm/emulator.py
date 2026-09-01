@@ -69,6 +69,7 @@ from riscvm.virtio import VirtIOBlk
 from riscvm.clint import CLINT
 from riscvm.plic import PLIC
 from riscvm.utils import regc
+from riscvm.trace import Tracer
 import binascii
 import logging
 import os
@@ -94,7 +95,7 @@ class Emulator:
             print(regc(i+1), f'0x{r.value:x}')
         print('pc', f'0x{cpu.pc.value:x}')
 
-    def run(self, limit=0):
+    def run(self, limit=0, tracer=None):
         count = 0
         current_cpu = self.cpu
         try:
@@ -110,7 +111,17 @@ class Emulator:
                     current_cpu = cpu
                     if cpu.fetch():
                         fetched_any = True
+                        # Trace only the hart the tracer is bound to: a
+                        # co-simulated single-hart core has nothing to compare
+                        # the other harts against.
+                        traced = tracer is not None and cpu is tracer.cpu
+                        if traced:
+                            trace_pc = cpu.pc.value
+                            trace_inst = cpu.instruction.value
+                            tracer.before()
                         cpu.execute()
+                        if traced:
+                            tracer.after(trace_pc, trace_inst)
                 if not fetched_any:
                     break
                 if count % 10000 == 0:
@@ -202,6 +213,14 @@ if __name__ == '__main__':
                          help='xv6 filesystem image (built via mkfs) to back the virtio disk')
     parser.add_argument('--uart-input', type=argparse.FileType('rb'), default=None,
                          help='source of console input bytes; defaults to the terminal when stdin is a tty')
+    parser.add_argument('--plain', action='store_true',
+                         help='run a bare Emulator (RAM only, starts at --address) instead of the '
+                              'XV6 machine; the XV6 machine begins in a bootloader stub at 0x1000, '
+                              'which a bare core under co-simulation does not have')
+    parser.add_argument('--trace', type=argparse.FileType('w'), default=None,
+                         help='write a commit trace of hart 0 for co-simulation against hardware')
+    parser.add_argument('--limit', type=int, default=0,
+                         help='stop after this many instructions (0 = unlimited)')
     parser.add_argument('--smp', type=int, default=1,
                          help="number of harts to boot, like qemu's -smp (xv6-riscv's own `make qemu` defaults to 3)")
     parser.add_argument('file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin.buffer)
@@ -219,4 +238,12 @@ if __name__ == '__main__':
         # scripted/piped invocation opts in explicitly via --uart-input
         uart_input = sys.stdin.buffer
         os.set_blocking(uart_input.fileno(), False)
-    XV6(data, args.uart_output, address=args.address, disk_image=disk_image, uart_input_file=uart_input, ncpu=args.smp).run()
+    if args.plain:
+        emu = Emulator(data, args.uart_output, address=args.address)
+    else:
+        emu = XV6(data, args.uart_output, address=args.address, disk_image=disk_image,
+                  uart_input_file=uart_input, ncpu=args.smp)
+    tracer = Tracer(emu.cpus[0], args.trace) if args.trace else None
+    emu.run(limit=args.limit, tracer=tracer)
+    if args.trace:
+        args.trace.close()

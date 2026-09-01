@@ -606,8 +606,22 @@ def actor(instruction, cpu):
             pass  # no I-cache modeled; nothing to synchronize
         
         # 
+        # Register-register shifts. RV64 takes the shift amount from the low
+        # SIX bits of rs2 (RV32 uses five); the W forms below use five because
+        # they operate on 32 bits. rv64rs already had all six of these right --
+        # see the funct3/funct7 table in rv64rs/src/execute.rs.
+        case Mnemonic.SLL:
+            cpu.rd(u64(cpu.registers[instruction.rs1].value) << (cpu.registers[instruction.rs2].value & 0b111111))
         case Mnemonic.SRL:
-            cpu.rd(cpu.registers[instruction.rs1].value >> (cpu.registers[instruction.rs2].value & 0b11111))
+            cpu.rd(u64(cpu.registers[instruction.rs1].value) >> (cpu.registers[instruction.rs2].value & 0b111111))
+        case Mnemonic.SRA:
+            cpu.rd(i64(cpu.registers[instruction.rs1].value) >> (cpu.registers[instruction.rs2].value & 0b111111))
+        case Mnemonic.SLLW:
+            cpu.rd(i32(u32(cpu.registers[instruction.rs1].value) << (cpu.registers[instruction.rs2].value & 0b11111)))
+        case Mnemonic.SRLW:
+            cpu.rd(i32(u32(cpu.registers[instruction.rs1].value) >> (cpu.registers[instruction.rs2].value & 0b11111)))
+        case Mnemonic.SRAW:
+            cpu.rd(i32(i32(cpu.registers[instruction.rs1].value) >> (cpu.registers[instruction.rs2].value & 0b11111)))
         case Mnemonic.SFENCE_VMA:
             pass
             
