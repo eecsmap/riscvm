@@ -1,11 +1,11 @@
 from enum import Enum
-from riscvm.exception import error
+from riscvm.exception import error, ArchitecturalTrap, IllegalInstruction
 from riscvm.register import Register, FixedRegister
 from riscvm.rv64i import Instruction as RV64I_Instruction, actor as rv64i_actor
 from riscvm.rv64c import Instruction as RV64C_Instruction, actor as rv64c_actor
 from riscvm.csr import CSR, PrivilegeLevel
 from riscvm.mmu import translate
-from riscvm.trap import check_interrupt
+from riscvm.trap import check_interrupt, raise_trap
 
 import logging
 logger = logging.getLogger(__name__)
@@ -72,21 +72,56 @@ class CPU:
             case 0b00 | 0b01 | 0b10:
                 self.instruction = RV64C_Instruction(data)
             case _:
-                error(f'invalid instruction 0x{data:08x} @0x{self.pc.value:016x}')
+                # Unreachable: the two-bit match above is exhaustive. Kept as a
+                # guard so a future change to the dispatch cannot fall through
+                # silently.
+                error(f'unreachable instruction dispatch 0x{data:08x} @0x{self.pc.value:016x}')
         return self.instruction
 
     def rd(self, value):
         # assume instruction always have rd well defined
         self.registers[self.instruction.rd].value = value
 
+    # An implementation may either support misaligned accesses or trap on them;
+    # the specification permits both. This one traps, to match the hardware in
+    # riscvhw, so the two can be co-simulated on programs that fault. That is a
+    # configuration choice, not a correctness fix -- accepting them, as this
+    # emulator previously did, was equally conformant.
+    ALIGN_TRAPS = True
+
+    def _check_alignment(self, address, size, cause):
+        if self.ALIGN_TRAPS and size and (address & (size - 1)):
+            raise ArchitecturalTrap(cause=cause, tval=address)
+
     def read(self, address, size):
+        self._check_alignment(address, size, cause=4)   # load address misaligned
         return self.bus.read(translate(self, address, 'r'), size)
 
     def write(self, address, size, value):
+        self._check_alignment(address, size, cause=6)   # store address misaligned
         self.bus.write(translate(self, address, 'w'), size, value)
+
+    # Set to make an unknown encoding abort instead of trapping. riscvm was
+    # developed by running the xv6 kernel and implementing whatever it crashed
+    # on next, and a silent trap would break that loop -- an unimplemented
+    # instruction would look like a guest bug instead of a missing feature.
+    strict_illegal = False
 
     def execute(self, instruction=None):
         if instruction:
             self.instruction = instruction
         actor = get_actor(self.instruction.value)
-        actor(self.instruction, self)
+        try:
+            actor(self.instruction, self)
+        except ArchitecturalTrap as trap:
+            # The actor raised before committing its new pc, so self.pc is still
+            # the faulting instruction and is what mepc should record.
+            if isinstance(trap, IllegalInstruction):
+                if self.strict_illegal:
+                    raise
+                # Still say so: an illegal instruction is almost always a
+                # missing feature in this emulator rather than a guest fault.
+                logger.warning('illegal instruction 0x%08x @0x%016x -- trapping',
+                               trap.encoding, self.pc.value)
+            self.pc.value = raise_trap(self, trap.cause, is_interrupt=False,
+                                       tval=trap.tval)

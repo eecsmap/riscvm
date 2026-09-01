@@ -9,7 +9,7 @@ USE_SYMBOL = True
 
 from riscvm.csr import CSR, PrivilegeLevel
 from riscvm.utils import lookup_mnemonic, i, i8, i16, i32, i64, u8, u16, u32, u64, regc, partial, section, trunc_div, trunc_rem
-from riscvm.exception import error
+from riscvm.exception import error, IllegalInstruction, ArchitecturalTrap
 from riscvm.trap import (
     csr_read, csr_write, raise_trap,
     MSTATUS_SIE, MSTATUS_SPIE, MSTATUS_SPP,
@@ -625,8 +625,12 @@ def actor(instruction, cpu):
         case Mnemonic.SFENCE_VMA:
             pass
             
+        case Mnemonic.EBREAK:
+            # mtval holds the address of the breakpoint itself, which is what a
+            # debugger needs to find it.
+            raise ArchitecturalTrap(cause=3, tval=cpu.pc.value, message='breakpoint')
         case _:
-            error(f'invalid instruction: {instruction}')
+            raise IllegalInstruction(instruction.value)
     cpu.pc.value = new_pc
 
 
