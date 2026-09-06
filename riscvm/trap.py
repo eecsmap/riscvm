@@ -22,6 +22,7 @@ almost entirely in S-mode from then on.
 '''
 
 from riscvm.csr import CSR, PrivilegeLevel
+from riscvm.exception import IllegalInstruction
 
 SSTATUS_MASK = (1 << 1) | (1 << 5) | (1 << 8)   # SIE, SPIE, SPP
 SIE_MASK = (1 << 1) | (1 << 5) | (1 << 9)       # SSIE, STIE, SEIE
@@ -41,13 +42,31 @@ MIP_MTIP = 1 << 7
 MIP_SEIP = 1 << 9
 MIP_MEIP = 1 << 11
 
+MENVCFG_STCE = 1 << 63   # enables Sstc, i.e. stimecmp
+MCOUNTEREN_TM = 1 << 1   # lets S-mode read `time`
+
 _ALIASED = {
     CSR.SSTATUS.value: (CSR.MSTATUS.value, SSTATUS_MASK),
     CSR.SIE.value: (CSR.MIE.value, SIE_MASK),
     CSR.SIP.value: (CSR.MIP.value, SIP_MASK),
 }
 
-def csr_read(cpu, addr):
+def csr_read(cpu, addr, encoding=0):
+    if addr == CSR.TIME.value:
+        # `time` is not storage of its own: it is a read-only view of the same
+        # real-time counter the CLINT publishes as mtime. Reading cpu.csrs
+        # here would return a stale copy that nothing ever updates.
+        #
+        # mcounteren.TM gates this for anything below M-mode. That gate is
+        # worth modelling rather than waving through: forgetting it in
+        # hardware turns an ordinary `rdtime` into an illegal-instruction
+        # trap, and the failure looks nothing like a counter problem.
+        # (scounteren, which further gates U-mode, is not modelled -- xv6
+        # never reads time from user mode.)
+        if cpu.mode != PrivilegeLevel.M.value:
+            if not cpu.csrs.get(CSR.MCOUNTEREN.value, 0) & MCOUNTEREN_TM:
+                raise IllegalInstruction(encoding)
+        return cpu.clint.mtime if cpu.clint is not None else 0
     alias = _ALIASED.get(addr)
     if alias:
         base_addr, mask = alias
@@ -55,6 +74,13 @@ def csr_read(cpu, addr):
     return cpu.csrs.get(addr, 0)
 
 def csr_write(cpu, addr, value):
+    if addr == CSR.TIME.value:
+        # Read-only, for the same reason mhartid below is: letting it be
+        # written would put cpu.csrs and the CLINT's mtime -- which is what
+        # both the timer comparison and every later `time` read key off --
+        # permanently out of step. Silently dropping the write keeps the
+        # `csrrs rd, time, zero` read idiom working.
+        return
     if addr == CSR.MHARTID.value:
         # read-only on real hardware; a no-op here still lets the
         # `csrrs a1, mhartid, zero` idiom xv6 actually uses (a pure read:
@@ -138,6 +164,14 @@ def check_interrupt(cpu):
     mip = cpu.csrs.get(CSR.MIP.value, 0)
     if cpu.clint is not None:
         mip = (mip | MIP_MTIP) if cpu.clint.pending(cpu.hartid) else (mip & ~MIP_MTIP)
+        # Sstc: while menvcfg.STCE is set, STIP is not software-writable --
+        # it simply tracks `time >= stimecmp`. Guarding on STCE means a guest
+        # that never enables Sstc (xv6 before 92e60dd, and the CLINT-plus-
+        # timervec port this emulator was built against) sees exactly the
+        # behaviour it did before: STIP left alone for software to drive.
+        if cpu.csrs.get(CSR.MENVCFG.value, 0) & MENVCFG_STCE:
+            stimecmp = cpu.csrs.get(CSR.STIMECMP.value, (1 << 64) - 1)
+            mip = (mip | MIP_STIP) if cpu.clint.mtime >= stimecmp else (mip & ~MIP_STIP)
     if cpu.plic is not None:
         # xv6's plicinithart() only ever enables each hart's S-mode context
         # (PLIC_SCONTEXT(hart) == 2*hart+1); M-mode contexts go unused since

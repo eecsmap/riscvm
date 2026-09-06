@@ -448,28 +448,28 @@ def actor(instruction, cpu):
             # `csrrw a0, mscratch, a0`), writing rd first would clobber the
             # very register we still need to read for the new CSR value.
             rs1_value = cpu.registers[instruction.rs1].value
-            old = csr_read(cpu, instruction.csr)
+            old = csr_read(cpu, instruction.csr, instruction.value)
             cpu.rd(old)
             csr_write(cpu, instruction.csr, old | rs1_value)
         case Mnemonic.CSRRW:
             rs1_value = cpu.registers[instruction.rs1].value
-            cpu.rd(csr_read(cpu, instruction.csr))
+            cpu.rd(csr_read(cpu, instruction.csr, instruction.value))
             csr_write(cpu, instruction.csr, rs1_value)
         case Mnemonic.CSRRC:
             rs1_value = cpu.registers[instruction.rs1].value
-            old = csr_read(cpu, instruction.csr)
+            old = csr_read(cpu, instruction.csr, instruction.value)
             cpu.rd(old)
             csr_write(cpu, instruction.csr, old & ~rs1_value)
         case Mnemonic.CSRRWI:
             # the rs1 field holds a 5-bit zero-extended immediate here, not a register
-            cpu.rd(csr_read(cpu, instruction.csr))
+            cpu.rd(csr_read(cpu, instruction.csr, instruction.value))
             csr_write(cpu, instruction.csr, instruction.rs1)
         case Mnemonic.CSRRSI:
-            old = csr_read(cpu, instruction.csr)
+            old = csr_read(cpu, instruction.csr, instruction.value)
             cpu.rd(old)
             csr_write(cpu, instruction.csr, old | instruction.rs1)
         case Mnemonic.CSRRCI:
-            old = csr_read(cpu, instruction.csr)
+            old = csr_read(cpu, instruction.csr, instruction.value)
             cpu.rd(old)
             csr_write(cpu, instruction.csr, old & ~instruction.rs1)
         case Mnemonic.MUL:

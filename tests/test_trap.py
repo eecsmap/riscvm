@@ -297,3 +297,100 @@ def test_plic_threshold_masks_low_priority():
     plic.write(1 * 4, 4, 1)
     plic.write(0x201000, 4, 2)  # threshold above the irq's priority
     assert not plic.claimable(1)
+
+
+# --- Sstc (stimecmp) ---------------------------------------------------------
+#
+# The point of Sstc is that a supervisor timer interrupt comes straight from
+# `time >= stimecmp`, so S-mode rearms its own timer with one CSR write. The
+# alternative -- the only one available without it -- is the CLINT's
+# memory-mapped mtimecmp, which S-mode cannot reach, forcing an M-mode
+# timervec trampoline that rearms the CLINT and reflects the tick down as a
+# software interrupt. These tests pin the behaviour that makes the trampoline
+# unnecessary.
+
+def make_cpu_with_clint(mtime=0):
+    cpu = make_cpu()
+    cpu.clint = CLINT(0x10000)
+    cpu.clint.mtime = mtime
+    return cpu
+
+
+def test_time_reads_clint_mtime():
+    # `time` is not storage of its own: it must track the same counter the
+    # CLINT publishes as mtime, or a guest that reads one and compares against
+    # the other never makes progress.
+    cpu = make_cpu_with_clint(mtime=1234)
+    assert csr_read(cpu, CSR.TIME.value) == 1234
+    cpu.clint.tick(10)
+    assert csr_read(cpu, CSR.TIME.value) == 1244
+
+
+def test_time_is_read_only():
+    cpu = make_cpu_with_clint(mtime=500)
+    csr_write(cpu, CSR.TIME.value, 999)
+    assert csr_read(cpu, CSR.TIME.value) == 500  # write dropped, not stored
+
+
+def test_time_needs_mcounteren_tm_below_m_mode():
+    from riscvm.exception import IllegalInstruction
+    cpu = make_cpu_with_clint(mtime=7)
+    cpu.mode = PrivilegeLevel.S.value
+    with pytest.raises(IllegalInstruction):
+        csr_read(cpu, CSR.TIME.value)
+    csr_write(cpu, CSR.MCOUNTEREN.value, 2)  # TM
+    assert csr_read(cpu, CSR.TIME.value) == 7
+    # M-mode is never gated
+    cpu.mode = PrivilegeLevel.M.value
+    csr_write(cpu, CSR.MCOUNTEREN.value, 0)
+    assert csr_read(cpu, CSR.TIME.value) == 7
+
+
+def test_stip_tracks_stimecmp_when_stce_set():
+    from riscvm.trap import MENVCFG_STCE, MIP_STIP
+    cpu = make_cpu_with_clint(mtime=0)
+    csr_write(cpu, CSR.MENVCFG.value, MENVCFG_STCE)
+    csr_write(cpu, CSR.STIMECMP.value, 100)
+
+    cpu.clint.tick(99)                      # time = 99, still short
+    check_interrupt(cpu)
+    assert not cpu.csrs[CSR.MIP.value] & MIP_STIP
+
+    cpu.clint.tick(1)                       # time = 100, now due
+    check_interrupt(cpu)
+    assert cpu.csrs[CSR.MIP.value] & MIP_STIP
+
+    csr_write(cpu, CSR.STIMECMP.value, 200)  # rearming clears it
+    check_interrupt(cpu)
+    assert not cpu.csrs[CSR.MIP.value] & MIP_STIP
+
+
+def test_stip_untouched_when_stce_clear():
+    # A guest that never enables Sstc must see exactly the old behaviour:
+    # STIP left alone for software to drive. This is what keeps the existing
+    # CLINT-plus-timervec xv6 port working unchanged.
+    from riscvm.trap import MIP_STIP
+    cpu = make_cpu_with_clint(mtime=1000)
+    csr_write(cpu, CSR.STIMECMP.value, 1)     # long past due...
+    cpu.csrs[CSR.MIP.value] = 0
+    check_interrupt(cpu)
+    assert not cpu.csrs[CSR.MIP.value] & MIP_STIP  # ...but STCE is clear, so ignored
+
+
+def test_stimecmp_delivers_supervisor_timer_interrupt():
+    # End to end: with Sstc enabled and the interrupt delegated and enabled,
+    # an expired stimecmp lands in S-mode at stvec -- no M-mode trampoline.
+    from riscvm.trap import MENVCFG_STCE, SUPERVISOR_TIMER_INTERRUPT
+    cpu = make_cpu_with_clint(mtime=0)
+    csr_write(cpu, CSR.MENVCFG.value, MENVCFG_STCE)
+    csr_write(cpu, CSR.MIDELEG.value, 1 << SUPERVISOR_TIMER_INTERRUPT)
+    csr_write(cpu, CSR.SIE.value, 1 << SUPERVISOR_TIMER_INTERRUPT)   # STIE
+    csr_write(cpu, CSR.MSTATUS.value, MSTATUS_SIE)
+    csr_write(cpu, CSR.STVEC.value, 0x8000)
+    csr_write(cpu, CSR.STIMECMP.value, 10)
+    cpu.mode = PrivilegeLevel.S.value
+
+    cpu.clint.tick(10)
+    assert check_interrupt(cpu) is True
+    assert cpu.pc.value == 0x8000
+    assert cpu.csrs[CSR.SCAUSE.value] == ((1 << 63) | SUPERVISOR_TIMER_INTERRUPT)
