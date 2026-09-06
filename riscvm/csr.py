@@ -45,17 +45,32 @@ class CSR(Enum):
     SCAUSE = 0x142
     STVAL = 0x143
     SIP = 0x144
+    # Sstc. With it a supervisor timer interrupt comes from `time >= stimecmp`
+    # directly, so S-mode reprograms its own timer with a single CSR write.
+    # Without it the only timer is the CLINT's memory-mapped mtimecmp, which
+    # S-mode cannot reach -- forcing the M-mode timervec trampoline that
+    # rearms the CLINT and reflects the tick down as a software interrupt.
+    # xv6 has used stimecmp since commit 92e60dd.
+    STIMECMP = 0x14d
     SATP = 0x180
+    MSTATUS = 0x300
     MEDELEG = 0x302
     MIDELEG = 0x303
-    MSTATUS = 0x300
     MIE = 0x304
     MTVEC = 0x305
+    # Which counters S/U mode may read. xv6's timerinit() sets bit 1 (TM) so
+    # supervisor code can read `time`; without it that read is illegal.
+    MCOUNTEREN = 0x306
+    # Bit 63 (STCE) is what enables Sstc.
+    MENVCFG = 0x30a
     MSCRATCH = 0x340
     MEPC = 0x341
     MCAUSE = 0x342
     MTVAL = 0x343
     MIP = 0x344
+    # Read-only shadow of the CLINT's mtime. Architecturally `time` is not an
+    # independent counter -- it is the same real-time counter mtime exposes.
+    TIME = 0xc01
     MHARTID = 0xf14
 
     def __str__(self):
